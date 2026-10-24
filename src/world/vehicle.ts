@@ -98,27 +98,23 @@ export function createVehicleController(scene: THREE.Scene): VehicleController {
   const headL = mkHeadlight(-0.85);
   const headR = mkHeadlight(0.85);
 
-  const headGlowL = lampSprite('#ffd9a2', 1.15);
-  headGlowL.position.set(-0.85, 1.02, -3.62);
-  const headGlowR = lampSprite('#ffd9a2', 1.15);
-  headGlowR.position.set(0.85, 1.02, -3.62);
+  const headGlowL = lampSprite('#ffd9a2', 0.62);
+  headGlowL.position.set(-0.85, 0.98, -3.58);
+  (headGlowL.material as THREE.SpriteMaterial).opacity = 0.75;
+  const headGlowR = lampSprite('#ffd9a2', 0.62);
+  headGlowR.position.set(0.85, 0.98, -3.58);
+  (headGlowR.material as THREE.SpriteMaterial).opacity = 0.75;
   root.add(headGlowL, headGlowR);
 
   // Taillights: full-width rear glow + brake dynamics
-  const tailMatL = lampSprite('#ff3822', 1.35);
-  const tailMatR = lampSprite('#ff3822', 1.35);
-  tailMatL.position.set(-0.95, 1.0, 3.58);
-  tailMatR.position.set(0.95, 1.0, 3.58);
+  const tailMatL = lampSprite('#ff3822', 1.15);
+  const tailMatR = lampSprite('#ff3822', 1.15);
+  tailMatL.position.set(-0.95, 1.28, 3.62);
+  tailMatR.position.set(0.95, 1.28, 3.62);
   root.add(tailMatL, tailMatR);
   const tailLight = new THREE.PointLight('#ff2c14', 3.5, 11, 1.8);
-  tailLight.position.set(0, 1.05, 3.9);
+  tailLight.position.set(0, 1.3, 3.85);
   root.add(tailLight);
-
-  // Atmospheric-friction heat glow around the car during the 90° space climb
-  const heatGlow = lampSprite('#ff7a28', 9.5);
-  heatGlow.position.set(0, 1.3, 1.6);
-  (heatGlow.material as THREE.SpriteMaterial).opacity = 0;
-  root.add(heatGlow);
 
   // Exhaust / time-jump flame trail particle pool (BTTF fire trails)
   const P_COUNT = 240;
@@ -145,7 +141,6 @@ export function createVehicleController(scene: THREE.Scene): VehicleController {
 
   const loader = new GLTFLoader();
   const loadedModels = new Map<CarModelId, THREE.Group>();
-  const wheelSets = new Map<CarModelId, THREE.Object3D[]>();
   let activeModelGroup: THREE.Group | null = null;
   let currentCar: CarModelId = 'bttf';
 
@@ -170,11 +165,6 @@ export function createVehicleController(scene: THREE.Scene): VehicleController {
       CAR_FILES[id],
       (gltf) => {
         const model = gltf.scene;
-        const wheels: THREE.Object3D[] = [];
-        model.traverse((o) => {
-          if (/wheel/i.test(o.name)) wheels.push(o);
-        });
-        wheelSets.set(id, wheels);
         const bounds = new THREE.Box3().setFromObject(model);
         const size = bounds.getSize(new THREE.Vector3());
         const center = bounds.getCenter(new THREE.Vector3());
@@ -348,13 +338,6 @@ export function createVehicleController(scene: THREE.Scene): VehicleController {
       chassis.rotation.x = THREE.MathUtils.lerp(chassis.rotation.x, targetPitch, 1 - Math.exp(-10 * dt));
       chassis.rotation.z = THREE.MathUtils.lerp(chassis.rotation.z, targetRoll, 1 - Math.exp(-10 * dt));
 
-      // --- Wheel spin ---------------------------------------------------------
-      const wheels = wheelSets.get(currentCar);
-      if (wheels) {
-        const wSpin = (speed / 0.42) * dt;
-        for (const w of wheels) w.rotation.x += wSpin;
-      }
-
       // --- Brake lights: flare up on deceleration / reverse input --------------
       const decel = (prevSpeed - speed) / Math.max(dt, 0.001);
       const braking = (decel > 4.5 && prevSpeed > 0.5) || (input.backward && speed > 1.5);
@@ -377,13 +360,6 @@ export function createVehicleController(scene: THREE.Scene): VehicleController {
       const flightFactor = THREE.MathUtils.clamp(pitchAngle / 1.2, 0, 1);
       const boosting = input.boost && Math.abs(speed) > 28;
       const emitting = flightFactor > 0.02 || boosting;
-      const heatMat = heatGlow.material as THREE.SpriteMaterial;
-      heatMat.opacity = THREE.MathUtils.lerp(
-        heatMat.opacity,
-        Math.min(0.85, flightFactor * Math.abs(speed) * 0.022 + (boosting ? 0.3 : 0)),
-        1 - Math.exp(-5 * dt)
-      );
-      heatGlow.scale.setScalar(7.5 + flightFactor * 4.5 + Math.sin(exhaustTime * 31) * 0.5);
 
       carVel.copy(root.position).sub(prevPos).divideScalar(Math.max(dt, 0.001));
       prevPos.copy(root.position);
