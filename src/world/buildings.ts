@@ -29,7 +29,7 @@ interface StorefrontSpec {
   title: string;
   subtitle: string;
   signStyle: { bg: string; fg: string; accent: string; serif?: boolean; border?: boolean; tag?: string };
-  theme: 'gallery' | 'books' | 'bistro' | 'horology' | 'design';
+  theme: 'gallery' | 'books' | 'bistro' | 'horology' | 'design' | 'computer';
   canopyMat: MatKey;
   hasArcade?: boolean;
 }
@@ -61,6 +61,12 @@ interface BuildingSpec {
     facing: '+X' | '-X' | '+Z' | '-Z';
     storefront?: StorefrontSpec;
   }>;
+  fireEscape?: boolean;
+  roofProps?: {
+    waterTower?: boolean;
+    billboard?: { title: string; sub: string };
+    antennas?: number;
+  };
   seed: number;
 }
 
@@ -175,6 +181,13 @@ function buildStorefrontInteriorAndFacade(
           addOrientedBox(b, 'paleLimestone', faceOriginX, groundY, faceOriginZ, axis, bayCenter + openW * side, 0.84, propDepth + 0.25, 0.8, 0.08, 0.8);
           addOrientedBox(b, 'emissiveAmberAccent', faceOriginX, groundY, faceOriginZ, axis, bayCenter + openW * side, 1.08, propDepth + 0.25, 0.18, 0.26, 0.18);
         }
+      } else if (store.theme === 'computer') {
+        addOrientedBox(b, 'warmTimber', faceOriginX, groundY, faceOriginZ, axis, bayCenter, 0.52, propDepth + 0.3, openW * 0.82, 0.14, 0.55);
+        for (const m of [-0.3, 0, 0.3]) {
+          addOrientedBox(b, 'blackSteel', faceOriginX, groundY, faceOriginZ, axis, bayCenter + openW * m, 0.92, propDepth + 0.22, 0.52, 0.42, 0.4);
+          addOrientedBox(b, 'emissiveCyanAccent', faceOriginX, groundY, faceOriginZ, axis, bayCenter + openW * m, 0.95, propDepth + 0.45, 0.4, 0.3, 0.04);
+        }
+        addOrientedBox(b, 'emissiveWarmBright', faceOriginX, groundY, faceOriginZ, axis, bayCenter, clearH - 0.3, -interiorDepth + 0.35, openW * 0.7, 0.1, 0.3);
       } else {
         addOrientedBox(b, 'warmTimber', faceOriginX, groundY, faceOriginZ, axis, bayCenter, 1.85, -interiorDepth + 0.32, openW * 0.82, 3.0, 0.42);
         addOrientedBox(b, 'emissiveWarmBright', faceOriginX, groundY, faceOriginZ, axis, bayCenter, 2.65, propDepth, 0.52, 0.18, 0.52);
@@ -322,6 +335,11 @@ function buildUpperFacadeWall(
     }
   }
 
+  for (let f = 1; f < numFloors; f++) {
+    const bandY = baseY + f * spec.floorH;
+    addOrientedBox(b, spec.trimMat, faceOriginX, bandY, faceOriginZ, axis, 0, 0.0, -0.1, faceLength - 0.6, 0.13, 0.56);
+  }
+
   const topY = baseY + sectionH;
   addOrientedBox(b, spec.trimMat, faceOriginX, topY, faceOriginZ, axis, 0, 0.2, 0.2, faceLength + 0.32, 0.24, 0.5);
   addOrientedBox(b, spec.wallMat, faceOriginX, topY, faceOriginZ, axis, 0, 0.72, -0.18, faceLength, 0.82, 0.44);
@@ -421,6 +439,161 @@ function buildAuthoredBuilding(b: ArchitectureBuilder, spec: BuildingSpec) {
   const mechD = Math.min(sz * 0.44, 10.0);
   b.addBox('archConcrete', cx, roofY + 1.6, cz, mechW, 3.2, mechD);
   b.addBox(spec.trimMat, cx, roofY + 3.28, cz, mechW + 0.3, 0.18, mechD + 0.3);
+
+  if (spec.fireEscape) {
+    for (const face of spec.activeFaces) {
+      const axis = getFacadeAxis(face.facing);
+      const isXFace = Math.abs(axis.nx) > 0.5;
+      const faceLen = isXFace ? sz : sx;
+      const fx = face.facing === '+X' ? spec.xMax : face.facing === '-X' ? spec.xMin : cx;
+      const fz = face.facing === '+Z' ? spec.zMax : face.facing === '-Z' ? spec.zMin : cz;
+      buildFireEscape(b, fx, fz, axis, faceLen * 0.3, groundY + spec.podiumH, spec.floorH, Math.min(5, spec.floors - 1));
+    }
+  }
+
+  if (spec.roofProps) {
+    const roadFace = spec.activeFaces[0]?.facing ?? '+X';
+    const axis = getFacadeAxis(roadFace);
+    const edgeX = roadFace === '+X' ? spec.xMax : roadFace === '-X' ? spec.xMin : cx;
+    const edgeZ = roadFace === '+Z' ? spec.zMax : roadFace === '-Z' ? spec.zMin : cz;
+
+    if (spec.roofProps.waterTower) {
+      const tx = cx - axis.nx * sx * 0.16;
+      const tz = cz - sz * 0.2 + axis.rx * sx * 0.0;
+      const legH = 4.4;
+      const tankR = 2.05;
+      const tankH = 3.3;
+      for (let a = 0; a < 4; a++) {
+        const ph = a * (Math.PI / 2) + 0.62;
+        b.addBeam(
+          'blackSteel',
+          new THREE.Vector3(tx + Math.cos(ph) * 1.65, roofY, tz + Math.sin(ph) * 1.65),
+          new THREE.Vector3(tx + Math.cos(ph) * 1.05, roofY + legH, tz + Math.sin(ph) * 1.05),
+          0.1,
+          0.07,
+          6
+        );
+      }
+      b.addCylinder('warmTimber', tx, roofY + legH + tankH * 0.5, tz, tankR, tankR * 0.92, tankH, 14);
+      b.addCylinder('blackSteel', tx, roofY + legH + 0.12, tz, tankR + 0.16, tankR + 0.16, 0.24, 14);
+      b.addCylinder('darkBronze', tx, roofY + legH + tankH + 0.62, tz, 0.08, tankR * 0.9, 1.24, 14);
+    }
+
+    if (spec.roofProps.billboard) {
+      const bbW = 9.4;
+      const bbH = 4.4;
+      const bbX = edgeX - axis.nx * 1.6;
+      const bbZ = edgeZ - axis.nz * 1.6 + axis.rz * sz * 0.14;
+      const signY = roofY + 5.4;
+      addOrientedBox(b, 'blackSteel', bbX, roofY, bbZ, axis, -bbW * 0.36, 1.6, -0.2, 0.32, 3.2, 0.32);
+      addOrientedBox(b, 'blackSteel', bbX, roofY, bbZ, axis, bbW * 0.36, 1.6, -0.2, 0.32, 3.2, 0.32);
+      addOrientedBox(b, 'darkBronze', bbX, roofY, bbZ, axis, 0, signY - roofY, -0.2, bbW, bbH, 0.34);
+      b.addSignBoard(
+        bbX + axis.nx * 0.06,
+        signY,
+        bbZ + axis.nz * 0.06,
+        axis.rotY,
+        bbW - 0.7,
+        bbH - 0.55,
+        spec.roofProps.billboard.title,
+        spec.roofProps.billboard.sub,
+        { bg: '#0d1420', fg: '#f6efdd', accent: '#f59e0b', border: true, tag: 'AD // CIRCA 2004' }
+      );
+    }
+
+    if (spec.roofProps.antennas) {
+      for (let i = 0; i < spec.roofProps.antennas; i++) {
+        const ax = cx + (rng() - 0.5) * sx * 0.42;
+        const az = cz + (rng() - 0.5) * sz * 0.42;
+        const ah = 4.5 + rng() * 4.5;
+        b.addBeam('blackSteel', new THREE.Vector3(ax, roofY, az), new THREE.Vector3(ax, roofY + ah, az), 0.06, 0.03, 5);
+        b.addBox('blackSteel', ax, roofY + ah * 0.72, az, 1.1, 0.06, 0.06, rng() * Math.PI);
+        b.addBox('blackSteel', ax, roofY + ah * 0.55, az, 0.7, 0.05, 0.05, rng() * Math.PI);
+      }
+    }
+  }
+}
+
+// ============================================================================
+// ACT I STREET FURNITURE: FIRE ESCAPES, BLADE SIGNS & SAGGING WIRES
+// ============================================================================
+function buildFireEscape(
+  b: ArchitectureBuilder,
+  faceX: number,
+  faceZ: number,
+  axis: FacadeAxis,
+  halfSpan: number,
+  baseY: number,
+  floorH: number,
+  levels: number
+) {
+  const out = 1.28;
+  for (let l = 0; l < levels; l++) {
+    const y = baseY + l * floorH + 0.12;
+    addOrientedBox(b, 'blackSteel', faceX, y, faceZ, axis, 0, 0, out * 0.52, halfSpan * 2, 0.11, out);
+    addOrientedBox(b, 'blackSteel', faceX, y, faceZ, axis, 0, 0.52, out + 0.02, halfSpan * 2, 0.07, 0.06);
+    addOrientedBox(b, 'blackSteel', faceX, y, faceZ, axis, -halfSpan, 0.52, out * 0.52, 0.07, 0.06, out);
+    addOrientedBox(b, 'blackSteel', faceX, y, faceZ, axis, halfSpan, 0.52, out * 0.52, 0.07, 0.06, out);
+    for (const p of [-halfSpan, -halfSpan * 0.5, 0, halfSpan * 0.5, halfSpan]) {
+      addOrientedBox(b, 'blackSteel', faceX, y, faceZ, axis, p, 0.28, out + 0.02, 0.05, 0.56, 0.05);
+    }
+    if (l < levels - 1) {
+      const a = new THREE.Vector3(
+        faceX + axis.nx * (out * 0.9) + axis.rx * -halfSpan,
+        y + 0.1,
+        faceZ + axis.nz * (out * 0.9) + axis.rz * -halfSpan
+      );
+      const c = new THREE.Vector3(
+        faceX + axis.nx * (out * 0.9) + axis.rx * halfSpan,
+        y + floorH,
+        faceZ + axis.nz * (out * 0.9) + axis.rz * halfSpan
+      );
+      b.addBeam('blackSteel', a, c, 0.26, 0.26, 4);
+      const a2 = a.clone(); a2.y += 0.5;
+      const c2 = c.clone(); c2.y += 0.5;
+      b.addBeam('blackSteel', a2, c2, 0.05, 0.05, 5);
+    }
+  }
+}
+
+function buildBladeSigns(b: ArchitectureBuilder) {
+  const signs: Array<{ x: number; dir: 1 | -1; z: number; y: number; t: string; s: string; accent: string }> = [
+    { x: -25.5, dir: 1, z: 306, y: 4.5, t: 'INTERNET CAFE', s: '56K · $2 / HOUR', accent: '#38bdf8' },
+    { x: -25.5, dir: 1, z: 148, y: 4.6, t: 'PC CLUB', s: 'CS 1.6 · LAN PARTY', accent: '#f59e0b' },
+    { x: 25.5, dir: -1, z: 298, y: 4.5, t: 'CD · DVD · MP3', s: 'BURN WHILE U WAIT', accent: '#f59e0b' },
+    { x: 25.5, dir: -1, z: 136, y: 4.4, t: 'WEB STUDIO', s: 'FLASH · HTML · PHP', accent: '#38bdf8' },
+  ];
+  for (const sg of signs) {
+    const sx = sg.x + sg.dir * 1.75;
+    b.addBeam('blackSteel', new THREE.Vector3(sg.x + sg.dir * 0.1, sg.y + 0.95, sg.z), new THREE.Vector3(sx, sg.y + 0.95, sg.z), 0.05, 0.05, 6);
+    b.addBeam('blackSteel', new THREE.Vector3(sg.x + sg.dir * 0.1, sg.y + 0.12, sg.z), new THREE.Vector3(sx, sg.y + 0.9, sg.z), 0.045, 0.045, 6);
+    b.addSignBoard(sx, sg.y, sg.z, 0, 3.6, 1.5, sg.t, sg.s, { bg: '#0d1420', fg: '#f4ecd8', accent: sg.accent, border: true });
+    b.addSignBoard(sx, sg.y, sg.z, Math.PI, 3.6, 1.5, sg.t, sg.s, { bg: '#0d1420', fg: '#f4ecd8', accent: sg.accent, border: true });
+  }
+}
+
+function buildStreetWires(b: ArchitectureBuilder) {
+  for (const wz of [272, 178]) {
+    const x0 = -24.8;
+    const x1 = 24.8;
+    for (const off of [-0.55, 0, 0.55]) {
+      const y0 = 10.6 + off * 0.5;
+      const sag = 2.5;
+      let prev = new THREE.Vector3(x0, y0, wz + off);
+      for (let i = 1; i <= 16; i++) {
+        const t = i / 16;
+        const cur = new THREE.Vector3(x0 + (x1 - x0) * t, y0 - sag * 4 * t * (1 - t), wz + off);
+        b.addBeam('blackSteel', prev, cur, 0.028, 0.028, 5);
+        prev = cur;
+      }
+    }
+    for (const t of [0.32, 0.5, 0.68]) {
+      const bx = x0 + (x1 - x0) * t;
+      const wireY = 10.6 - 2.5 * 4 * t * (1 - t);
+      b.addBeam('blackSteel', new THREE.Vector3(bx, wireY, wz), new THREE.Vector3(bx, wireY - 0.55, wz), 0.02, 0.02, 4);
+      b.addBox('emissiveAmberAccent', bx, wireY - 0.68, wz, 0.14, 0.2, 0.14);
+    }
+  }
 }
 
 // ============================================================================
@@ -1091,12 +1264,13 @@ export function buildWorldArchitecture(
   const treePlacements: TreePlacement[] = [];
 
   const act1Buildings: BuildingSpec[] = [
+    // WEST ROW (facing +X toward the road)
     {
       id: 'act1-w1',
       xMin: -54,
       xMax: -25.5,
       zMin: 235,
-      zMax: 330,
+      zMax: 280,
       podiumH: 5.8,
       floors: 8,
       floorH: 3.65,
@@ -1112,6 +1286,12 @@ export function buildWorldArchitecture(
       balconies: true,
       setbackAtFloor: 6,
       setbackMeters: 3.2,
+      fireEscape: true,
+      roofProps: {
+        waterTower: true,
+        billboard: { title: 'WINAMP', sub: 'IT REALLY WHIPS THE LLAMA' },
+        antennas: 2,
+      },
       activeFaces: [
         {
           facing: '+X',
@@ -1130,8 +1310,41 @@ export function buildWorldArchitecture(
       id: 'act1-w2',
       xMin: -54,
       xMax: -25.5,
+      zMin: 284,
+      zMax: 330,
+      podiumH: 5.4,
+      floors: 6,
+      floorH: 3.55,
+      wallMat: 'warmStone',
+      secondaryMat: 'paleLimestone',
+      trimMat: 'darkBronze',
+      bayWidth: 3.6,
+      windowRatioW: 0.7,
+      windowRatioH: 0.68,
+      recessDepth: 0.36,
+      litProbability: 0.66,
+      style: 'beaux-arts',
+      roofProps: { antennas: 2 },
+      activeFaces: [
+        {
+          facing: '+X',
+          storefront: {
+            title: 'INTERNET CAFE',
+            subtitle: '56K MODEMS · WEBMAIL · ICQ',
+            signStyle: { bg: '#0e1a24', fg: '#eef7ff', accent: '#38bdf8', serif: false, border: true },
+            theme: 'computer',
+            canopyMat: 'darkBronze',
+          },
+        },
+      ],
+      seed: 111,
+    },
+    {
+      id: 'act1-w3',
+      xMin: -54,
+      xMax: -25.5,
       zMin: 118,
-      zMax: 222,
+      zMax: 168,
       podiumH: 5.8,
       floors: 10,
       floorH: 3.65,
@@ -1144,6 +1357,7 @@ export function buildWorldArchitecture(
       recessDepth: 0.38,
       litProbability: 0.64,
       style: 'beaux-arts',
+      balconies: true,
       setbackAtFloor: 7,
       setbackMeters: 3.0,
       activeFaces: [
@@ -1161,11 +1375,49 @@ export function buildWorldArchitecture(
       seed: 202,
     },
     {
+      id: 'act1-w4',
+      xMin: -54,
+      xMax: -25.5,
+      zMin: 172,
+      zMax: 222,
+      podiumH: 5.6,
+      floors: 9,
+      floorH: 3.6,
+      wallMat: 'darkBrick',
+      secondaryMat: 'warmStone',
+      trimMat: 'blackSteel',
+      bayWidth: 3.9,
+      windowRatioW: 0.66,
+      windowRatioH: 0.68,
+      recessDepth: 0.4,
+      litProbability: 0.6,
+      style: 'industrial-loft',
+      fireEscape: true,
+      roofProps: {
+        billboard: { title: 'FREE RINGTONES', sub: 'POLYPHONIC HITS · SMS 3344' },
+        antennas: 1,
+      },
+      activeFaces: [
+        {
+          facing: '+X',
+          storefront: {
+            title: 'PC CLUB · CYBER ARENA',
+            subtitle: 'COUNTER-STRIKE 1.6 · LAN TOURNEYS',
+            signStyle: { bg: '#0d1420', fg: '#e8f2ff', accent: '#38bdf8', serif: false, border: true },
+            theme: 'computer',
+            canopyMat: 'blackSteel',
+          },
+        },
+      ],
+      seed: 212,
+    },
+    // EAST ROW (facing -X toward the road)
+    {
       id: 'act1-e1',
       xMin: 25.5,
       xMax: 54,
       zMin: 235,
-      zMax: 330,
+      zMax: 278,
       podiumH: 5.8,
       floors: 9,
       floorH: 3.65,
@@ -1198,8 +1450,45 @@ export function buildWorldArchitecture(
       id: 'act1-e2',
       xMin: 25.5,
       xMax: 54,
+      zMin: 282,
+      zMax: 330,
+      podiumH: 5.5,
+      floors: 7,
+      floorH: 3.6,
+      wallMat: 'flutedConcrete',
+      secondaryMat: 'archConcrete',
+      trimMat: 'champagneMetal',
+      bayWidth: 3.9,
+      windowRatioW: 0.74,
+      windowRatioH: 0.72,
+      recessDepth: 0.36,
+      litProbability: 0.64,
+      style: 'fluted-gallery',
+      verticalFins: true,
+      roofProps: {
+        billboard: { title: 'ICQ · UIN', sub: 'UH-OH! MESSENGER INSIDE' },
+        antennas: 3,
+      },
+      activeFaces: [
+        {
+          facing: '-X',
+          storefront: {
+            title: 'FLASH PORTAL',
+            subtitle: 'NEWGROUNDS · MINICLIP · SHOCKWAVE',
+            signStyle: { bg: '#101828', fg: '#eef4ff', accent: '#38bdf8', serif: false, border: true },
+            theme: 'computer',
+            canopyMat: 'blackSteel',
+          },
+        },
+      ],
+      seed: 313,
+    },
+    {
+      id: 'act1-e3',
+      xMin: 25.5,
+      xMax: 54,
       zMin: 118,
-      zMax: 222,
+      zMax: 166,
       podiumH: 5.8,
       floors: 11,
       floorH: 3.65,
@@ -1229,11 +1518,133 @@ export function buildWorldArchitecture(
       ],
       seed: 404,
     },
+    {
+      id: 'act1-e4',
+      xMin: 25.5,
+      xMax: 54,
+      zMin: 170,
+      zMax: 222,
+      podiumH: 5.6,
+      floors: 8,
+      floorH: 3.6,
+      wallMat: 'warmBrick',
+      secondaryMat: 'limestone',
+      trimMat: 'darkBronze',
+      bayWidth: 3.75,
+      windowRatioW: 0.68,
+      windowRatioH: 0.7,
+      recessDepth: 0.38,
+      litProbability: 0.62,
+      style: 'beaux-arts',
+      balconies: true,
+      roofProps: { antennas: 2 },
+      activeFaces: [
+        {
+          facing: '-X',
+          storefront: {
+            title: 'MOBILE WORLD',
+            subtitle: 'NOKIA · SIEMENS · MOTOROLA RAZR',
+            signStyle: { bg: '#10141c', fg: '#f0f4fa', accent: '#f59e0b', serif: false, border: true },
+            theme: 'design',
+            canopyMat: 'darkBronze',
+          },
+        },
+      ],
+      seed: 414,
+    },
+    // BACKGROUND SECOND ROW — taller dark masses behind the front facades
+    {
+      id: 'act1-bgw1',
+      xMin: -79,
+      xMax: -58,
+      zMin: 130,
+      zMax: 208,
+      podiumH: 3.0,
+      floors: 15,
+      floorH: 3.5,
+      wallMat: 'darkBrick',
+      secondaryMat: 'warmStone',
+      trimMat: 'blackSteel',
+      bayWidth: 4.1,
+      windowRatioW: 0.66,
+      windowRatioH: 0.66,
+      recessDepth: 0.3,
+      litProbability: 0.34,
+      style: 'industrial-loft',
+      activeFaces: [{ facing: '+X' }],
+      seed: 505,
+    },
+    {
+      id: 'act1-bgw2',
+      xMin: -77,
+      xMax: -59,
+      zMin: 242,
+      zMax: 316,
+      podiumH: 3.0,
+      floors: 12,
+      floorH: 3.5,
+      wallMat: 'warmBrick',
+      secondaryMat: 'limestone',
+      trimMat: 'darkBronze',
+      bayWidth: 4.0,
+      windowRatioW: 0.66,
+      windowRatioH: 0.66,
+      recessDepth: 0.3,
+      litProbability: 0.3,
+      style: 'beaux-arts',
+      activeFaces: [{ facing: '+X' }],
+      seed: 515,
+    },
+    {
+      id: 'act1-bge1',
+      xMin: 58,
+      xMax: 79,
+      zMin: 136,
+      zMax: 214,
+      podiumH: 3.0,
+      floors: 16,
+      floorH: 3.5,
+      wallMat: 'warmBrick',
+      secondaryMat: 'limestone',
+      trimMat: 'darkBronze',
+      bayWidth: 4.0,
+      windowRatioW: 0.66,
+      windowRatioH: 0.66,
+      recessDepth: 0.3,
+      litProbability: 0.32,
+      style: 'beaux-arts',
+      activeFaces: [{ facing: '-X' }],
+      seed: 525,
+    },
+    {
+      id: 'act1-bge2',
+      xMin: 60,
+      xMax: 77,
+      zMin: 246,
+      zMax: 318,
+      podiumH: 3.0,
+      floors: 13,
+      floorH: 3.5,
+      wallMat: 'darkBrick',
+      secondaryMat: 'warmStone',
+      trimMat: 'blackSteel',
+      bayWidth: 4.1,
+      windowRatioW: 0.66,
+      windowRatioH: 0.66,
+      recessDepth: 0.3,
+      litProbability: 0.36,
+      style: 'industrial-loft',
+      activeFaces: [{ facing: '-X' }],
+      seed: 535,
+    },
   ];
 
   for (const spec of act1Buildings) {
     buildAuthoredBuilding(builder, spec);
   }
+
+  buildBladeSigns(builder);
+  buildStreetWires(builder);
 
   buildAct1SignsAndGantries(builder);
   buildRibbedGateVault(builder);

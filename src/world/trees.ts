@@ -32,8 +32,10 @@ export function loadAndPlaceElmTrees(scene: THREE.Scene, placements: TreePlaceme
 
       const barkGeos: THREE.BufferGeometry[] = [];
       const leafGeos: THREE.BufferGeometry[] = [];
-      let barkMat: THREE.Material | null = null;
-      let leafMat: THREE.Material | null = null;
+      const mats = {
+        barkMat: null as THREE.Material | null,
+        leafMat: null as THREE.Material | null,
+      };
 
       const offsetMatrix = new THREE.Matrix4()
         .makeTranslation(-center.x, -bounds.min.y, -center.z)
@@ -64,10 +66,10 @@ export function loadAndPlaceElmTrees(scene: THREE.Scene, placements: TreePlaceme
 
           if (isLeaf) {
             leafGeos.push(cloned);
-            if (!leafMat && mat) leafMat = mat;
+            if (!mats.leafMat && mat) mats.leafMat = mat;
           } else {
             barkGeos.push(cloned);
-            if (!barkMat && mat) barkMat = mat;
+            if (!mats.barkMat && mat) mats.barkMat = mat;
           }
         }
       });
@@ -82,8 +84,8 @@ export function loadAndPlaceElmTrees(scene: THREE.Scene, placements: TreePlaceme
         barkGeos.forEach((g) => g.dispose());
         if (mergedBark) {
           const finalBarkMat =
-            barkMat instanceof THREE.MeshStandardMaterial
-              ? barkMat
+            mats.barkMat instanceof THREE.MeshStandardMaterial
+              ? mats.barkMat
               : new THREE.MeshStandardMaterial({ color: '#4a3c31', roughness: 0.9 });
           const barkInst = new THREE.InstancedMesh(mergedBark, finalBarkMat, placements.length);
           barkInst.castShadow = true;
@@ -105,8 +107,8 @@ export function loadAndPlaceElmTrees(scene: THREE.Scene, placements: TreePlaceme
         leafGeos.forEach((g) => g.dispose());
         if (mergedLeaf) {
           let finalLeafMat: THREE.Material;
-          if (leafMat instanceof THREE.MeshStandardMaterial) {
-            finalLeafMat = leafMat.clone();
+          if (mats.leafMat instanceof THREE.MeshStandardMaterial) {
+            finalLeafMat = mats.leafMat.clone();
             (finalLeafMat as THREE.MeshStandardMaterial).alphaTest = 0.35;
             (finalLeafMat as THREE.MeshStandardMaterial).side = THREE.DoubleSide;
             (finalLeafMat as THREE.MeshStandardMaterial).roughness = 0.78;
