@@ -61,7 +61,6 @@ interface BuildingSpec {
     facing: '+X' | '-X' | '+Z' | '-Z';
     storefront?: StorefrontSpec;
   }>;
-  fireEscape?: boolean;
   roofProps?: {
     waterTower?: boolean;
     billboard?: { title: string; sub: string };
@@ -440,17 +439,6 @@ function buildAuthoredBuilding(b: ArchitectureBuilder, spec: BuildingSpec) {
   b.addBox('archConcrete', cx, roofY + 1.6, cz, mechW, 3.2, mechD);
   b.addBox(spec.trimMat, cx, roofY + 3.28, cz, mechW + 0.3, 0.18, mechD + 0.3);
 
-  if (spec.fireEscape) {
-    for (const face of spec.activeFaces) {
-      const axis = getFacadeAxis(face.facing);
-      const isXFace = Math.abs(axis.nx) > 0.5;
-      const faceLen = isXFace ? sz : sx;
-      const fx = face.facing === '+X' ? spec.xMax : face.facing === '-X' ? spec.xMin : cx;
-      const fz = face.facing === '+Z' ? spec.zMax : face.facing === '-Z' ? spec.zMin : cz;
-      buildFireEscape(b, fx, fz, axis, faceLen * 0.3, groundY + spec.podiumH, spec.floorH, Math.min(5, spec.floors - 1));
-    }
-  }
-
   if (spec.roofProps) {
     const roadFace = spec.activeFaces[0]?.facing ?? '+X';
     const axis = getFacadeAxis(roadFace);
@@ -515,47 +503,8 @@ function buildAuthoredBuilding(b: ArchitectureBuilder, spec: BuildingSpec) {
 }
 
 // ============================================================================
-// ACT I STREET FURNITURE: FIRE ESCAPES, BLADE SIGNS & SAGGING WIRES
+// ACT I STREET FURNITURE: BLADE SIGNS & SAGGING WIRES
 // ============================================================================
-function buildFireEscape(
-  b: ArchitectureBuilder,
-  faceX: number,
-  faceZ: number,
-  axis: FacadeAxis,
-  halfSpan: number,
-  baseY: number,
-  floorH: number,
-  levels: number
-) {
-  const out = 1.28;
-  for (let l = 0; l < levels; l++) {
-    const y = baseY + l * floorH + 0.12;
-    addOrientedBox(b, 'blackSteel', faceX, y, faceZ, axis, 0, 0, out * 0.52, halfSpan * 2, 0.11, out);
-    addOrientedBox(b, 'blackSteel', faceX, y, faceZ, axis, 0, 0.52, out + 0.02, halfSpan * 2, 0.07, 0.06);
-    addOrientedBox(b, 'blackSteel', faceX, y, faceZ, axis, -halfSpan, 0.52, out * 0.52, 0.07, 0.06, out);
-    addOrientedBox(b, 'blackSteel', faceX, y, faceZ, axis, halfSpan, 0.52, out * 0.52, 0.07, 0.06, out);
-    for (const p of [-halfSpan, -halfSpan * 0.5, 0, halfSpan * 0.5, halfSpan]) {
-      addOrientedBox(b, 'blackSteel', faceX, y, faceZ, axis, p, 0.28, out + 0.02, 0.05, 0.56, 0.05);
-    }
-    if (l < levels - 1) {
-      const a = new THREE.Vector3(
-        faceX + axis.nx * (out * 0.9) + axis.rx * -halfSpan,
-        y + 0.1,
-        faceZ + axis.nz * (out * 0.9) + axis.rz * -halfSpan
-      );
-      const c = new THREE.Vector3(
-        faceX + axis.nx * (out * 0.9) + axis.rx * halfSpan,
-        y + floorH,
-        faceZ + axis.nz * (out * 0.9) + axis.rz * halfSpan
-      );
-      b.addBeam('blackSteel', a, c, 0.26, 0.26, 4);
-      const a2 = a.clone(); a2.y += 0.5;
-      const c2 = c.clone(); c2.y += 0.5;
-      b.addBeam('blackSteel', a2, c2, 0.05, 0.05, 5);
-    }
-  }
-}
-
 function buildBladeSigns(b: ArchitectureBuilder) {
   const signs: Array<{ x: number; dir: 1 | -1; z: number; y: number; t: string; s: string; accent: string }> = [
     { x: -25.5, dir: 1, z: 306, y: 4.5, t: 'INTERNET CAFE', s: '56K · $2 / HOUR', accent: '#38bdf8' },
@@ -1286,7 +1235,6 @@ export function buildWorldArchitecture(
       balconies: true,
       setbackAtFloor: 6,
       setbackMeters: 3.2,
-      fireEscape: true,
       roofProps: {
         waterTower: true,
         billboard: { title: 'WINAMP', sub: 'IT REALLY WHIPS THE LLAMA' },
@@ -1392,7 +1340,6 @@ export function buildWorldArchitecture(
       recessDepth: 0.4,
       litProbability: 0.6,
       style: 'industrial-loft',
-      fireEscape: true,
       roofProps: {
         billboard: { title: 'FREE RINGTONES', sub: 'POLYPHONIC HITS · SMS 3344' },
         antennas: 1,
