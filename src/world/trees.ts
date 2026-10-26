@@ -20,7 +20,7 @@ export function loadAndPlaceElmTrees(scene: THREE.Scene, placements: TreePlaceme
 
   const loader = new GLTFLoader();
   loader.load(
-    '/models/tree_elm.glb',
+    './models/tree_elm.glb',
     (gltf) => {
       const root = gltf.scene;
       root.updateMatrixWorld(true);

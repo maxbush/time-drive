@@ -5,9 +5,9 @@ import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.j
 export type CarModelId = 'bttf' | 'alpha5' | 'rimac';
 
 const CAR_FILES: Record<CarModelId, string> = {
-  bttf: '/models/bttf_delorean_mobile.glb',
-  alpha5: '/models/delorean_alpha5.glb',
-  rimac: '/models/rimac_concept_one.glb',
+  bttf: './models/bttf_delorean_mobile.glb',
+  alpha5: './models/delorean_alpha5.glb',
+  rimac: './models/rimac_concept_one.glb',
 };
 
 export interface VehicleController {

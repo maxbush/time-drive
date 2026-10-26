@@ -6,7 +6,6 @@ import {
   WorldSceneEngine,
   WorldTelemetry,
 } from './world/WorldScene';
-import { CarModelId } from './world/vehicle';
 
 interface ProjectBriefData {
   tag: string;
@@ -437,28 +436,6 @@ export default function App() {
             </div>
 
             <div className="flex items-center gap-2 pointer-events-auto">
-              {/* Car Switcher */}
-              <div className="flex items-center rounded-lg bg-slate-900/80 border border-white/10 p-0.5 backdrop-blur-md">
-                {(
-                  [
-                    { id: 'bttf', label: 'BTTF DeLorean' },
-                    { id: 'alpha5', label: 'Alpha5' },
-                    { id: 'rimac', label: 'Rimac' },
-                  ] as Array<{ id: CarModelId; label: string }>
-                ).map((car) => (
-                  <button
-                    key={car.id}
-                    onClick={() => engineRef.current?.setCarModel(car.id)}
-                    className={`px-2.5 py-1 rounded-md text-xs font-medium transition cursor-pointer ${
-                      telemetry.carModel === car.id
-                        ? 'bg-amber-500 text-slate-950 font-semibold shadow-sm'
-                        : 'text-slate-300 hover:text-white'
-                    }`}
-                  >
-                    {car.label}
-                  </button>
-                ))}
-              </div>
 
               {/* Camera Mode Switcher */}
               <div className="flex items-center rounded-lg bg-slate-900/80 border border-white/10 p-0.5 backdrop-blur-md">
