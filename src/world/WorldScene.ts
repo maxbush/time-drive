@@ -196,6 +196,10 @@ export class WorldSceneEngine {
   private dprTimer = 0;
   private viewW = 1;
   private viewH = 1;
+  private dprCap = 2.0;
+  private qualityTier = 0; // 0 full → 1 low-DPR → 2 no reflection → 3 no bloom
+  private lowStreak = 0;
+  private reflectionDisabled = false;
 
   private animFrameId = 0;
   private lastPerfTime = performance.now();
@@ -317,6 +321,24 @@ export class WorldSceneEngine {
     // Spawn the car just behind the intro camera so it drives into frame.
     this.vehicle.setPose(2.8, 344, 0, 0, 0);
     this.updateDynamicLights();
+
+    // Optional forced quality: ?quality=low|med|high
+    const q = new URLSearchParams(window.location.search).get('quality');
+    if (q === 'low') {
+      this.dprCap = 1.25;
+      this.currentDpr = Math.min(this.currentDpr, 1.25);
+      this.renderer.setPixelRatio(this.currentDpr);
+      this.composer.setPixelRatio(this.currentDpr);
+      this.reflectionDisabled = true;
+      this.bloomPass.enabled = false;
+      this.qualityTier = 3;
+    } else if (q === 'med') {
+      this.dprCap = 1.5;
+      this.currentDpr = Math.min(this.currentDpr, 1.5);
+      this.renderer.setPixelRatio(this.currentDpr);
+      this.composer.setPixelRatio(this.currentDpr);
+      this.qualityTier = 1;
+    }
 
     window.addEventListener('resize', this.handleResize);
     window.addEventListener('keydown', this.handleKeyDown);
@@ -536,7 +558,7 @@ export class WorldSceneEngine {
   }
 
   private updatePlanarReflection() {
-    if (this.vehicle.position.y > 12 || this.vehicle.position.z < -420) return;
+    if (this.vehicle.position.y > 12 || this.vehicle.position.z < -420 || this.reflectionDisabled) return;
     this.camera.updateMatrixWorld();
 
     const camPos = new THREE.Vector3();
@@ -693,10 +715,10 @@ export class WorldSceneEngine {
     this.dprTimer += dt;
     if (this.dprTimer >= 2 && this.frameCounter > 30) {
       this.dprTimer = 0;
-      const maxDpr = Math.min(window.devicePixelRatio || 1, 2);
+      const maxDpr = Math.min(window.devicePixelRatio || 1, this.dprCap);
       let next = this.currentDpr;
-      if (this.currentFps < 50 && next > 1.25) {
-        next = Math.max(1.25, next - 0.25);
+      if (this.currentFps < 50 && next > 1.0) {
+        next = Math.max(1.0, next - 0.25);
       } else if (this.currentFps > 57 && next < maxDpr) {
         next = Math.min(maxDpr, next + 0.1);
       }
@@ -711,8 +733,30 @@ export class WorldSceneEngine {
           Math.max(256, Math.floor(this.viewH * next * 0.5))
         );
       }
+
+      // Quality governor: ~4s of sustained low FPS steps the scene down a tier
+      this.lowStreak = this.currentFps < 42 ? this.lowStreak + 1 : 0;
+      if (this.lowStreak >= 2 && this.qualityTier < 3) {
+        this.lowStreak = 0;
+        this.applyQualityTier(++this.qualityTier);
+      }
     }
   };
+
+  private applyQualityTier(tier: number) {
+    if (tier === 1) {
+      this.dprCap = 1.0;
+      this.currentDpr = Math.min(this.currentDpr, 1.0);
+      this.renderer.setPixelRatio(this.currentDpr);
+      this.composer.setPixelRatio(this.currentDpr);
+      this.renderer.setSize(this.viewW, this.viewH);
+      this.composer.setSize(this.viewW, this.viewH);
+    } else if (tier === 2) {
+      this.reflectionDisabled = true;
+    } else {
+      this.bloomPass.enabled = false;
+    }
+  }
 
   private emitTelemetry() {
     if (!this.onTelemetry) return;
