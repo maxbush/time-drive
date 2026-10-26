@@ -118,9 +118,11 @@ export default function App() {
     );
     engineRef.current = engine;
     engine.ready.then(() => setLoading(false));
+    let lastFlashKind: 'jump' | 'launch' | null = null;
     engine.onFlash = (v, kind) => {
       if (flashRef.current) flashRef.current.style.opacity = String(v);
-      if (flashLabelRef.current && kind) {
+      if (flashLabelRef.current && kind !== lastFlashKind) {
+        lastFlashKind = kind;
         flashLabelRef.current.textContent =
           kind === 'launch' ? 'IGNITION // BEYOND THE HORIZON' : '88 MPH // TEMPORAL JUMP';
       }
@@ -309,9 +311,21 @@ export default function App() {
         </aside>
       )}
 
-      {/* ACT III: SPACE FINALE SLOGAN & CONTACT FORM OVERLAY (When flying 90° up among the stars!) */}
-      {hudVisible && (telemetry.activeStation === 'space' || demoModalOpen) && (
-        <div className="fixed inset-0 z-30 flex items-center justify-center p-4 bg-slate-950/55 pointer-events-auto">
+      {/* ACT III finale — pre-mounted hidden so it doesn't cost an 80ms DOM
+          mount mid-flight; visibility just flips when the card is due */}
+      <div
+        className="fixed inset-0 z-30 flex items-center justify-center p-4 bg-slate-950/55 pointer-events-auto"
+        style={{
+          visibility:
+            hudVisible && (telemetry.activeStation === 'space' || demoModalOpen)
+              ? 'visible'
+              : 'hidden',
+          pointerEvents:
+            hudVisible && (telemetry.activeStation === 'space' || demoModalOpen)
+              ? 'auto'
+              : 'none',
+        }}
+      >
           <div className="w-full max-w-lg rounded-2xl bg-slate-950/90 border border-sky-400/35 p-7 shadow-[0_0_90px_rgba(56,189,248,0.25)]">
             <div className="flex items-center justify-between">
               <span className="px-3 py-1 rounded-full bg-sky-500/15 border border-sky-400/40 text-sky-300 font-mono text-[11px] tracking-widest uppercase">
@@ -425,7 +439,6 @@ export default function App() {
             )}
           </div>
         </div>
-      )}
 
       {hudVisible && (
         <>

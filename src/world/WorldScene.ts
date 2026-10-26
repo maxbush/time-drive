@@ -203,6 +203,7 @@ export class WorldSceneEngine {
   private reflectionDisabled = false;
   private spaceDprDropped = false;
   private cityHidden = false;
+  private treesGroup: THREE.Object3D | null = null;
   public onFlash?: (v: number, kind: 'jump' | 'launch' | null) => void;
 
   private animFrameId = 0;
@@ -283,7 +284,7 @@ export class WorldSceneEngine {
     // Loading screen waits for the car AND the tree GLB; tree shaders get a
     // second compile so they never stutter on first appearance.
     this.ready = Promise.all([this.vehicle.ready, treesReady]).then(() => {
-      this.renderer.compile(this.scene, this.camera);
+      this.warmUp();
     });
 
     // Cheap planar reflection: sprites, particles & micro-props stay on layer 1
@@ -574,7 +575,7 @@ export class WorldSceneEngine {
   }
 
   private updatePlanarReflection() {
-    if (this.vehicle.position.y > 12 || this.vehicle.position.z < -435 || this.reflectionDisabled) return;
+    if (this.vehicle.position.y > 12 || this.cityHidden || this.reflectionDisabled) return;
     this.camera.updateMatrixWorld();
 
     const camPos = new THREE.Vector3();
@@ -697,12 +698,17 @@ export class WorldSceneEngine {
     }
     this.avenue.group.visible = !this.cityHidden;
     this.archGroup.visible = !this.cityHidden;
+    // Trees + distant skyline die with the city — nothing but sky above anyway.
+    if (!this.treesGroup) this.treesGroup = this.scene.getObjectByName('ElmTreesInstanced') ?? null;
+    if (this.treesGroup) this.treesGroup.visible = !this.cityHidden;
+    this.envSystem.distantSkylineGroup.visible = !this.cityHidden;
 
-    // Single stepped DPR drop well before the ring — one buffer realloc on
-    // the plain road instead of a per-frame slide during the flash.
-    if (zPos < -385 && !this.spaceDprDropped) {
+    // Single stepped DPR drop at the PEAK of the launch flash — the screen is
+    // already white, so the one-time buffer realloc is invisible. Governor is
+    // frozen meanwhile (zPos<-380 || yPos>5 check in the DPR block).
+    if (!this.spaceDprDropped && this.flashKind === 'launch' && this.temporalFlash > 0.8) {
       this.spaceDprDropped = true;
-      this.setDpr(1.3);
+      this.setDpr(Math.min(this.currentDpr, 1.3));
     } else if (zPos > -400 && this.spaceDprDropped) {
       this.spaceDprDropped = false;
     }
@@ -725,7 +731,7 @@ export class WorldSceneEngine {
     this.activeZoneId = curZone.id;
 
     // Shadow map renders every other frame — halves the third pass cost
-    this.renderer.shadowMap.needsUpdate = this.frameCounter % 2 === 0;
+    this.renderer.shadowMap.needsUpdate = !this.cityHidden && this.frameCounter % 2 === 0;
 
     if (this.frameCounter % 2 === 0) {
       this.updatePlanarReflection();
@@ -744,7 +750,7 @@ export class WorldSceneEngine {
 
     // Adaptive resolution: scale pixel ratio to hold ~60fps.
     this.dprTimer += dt;
-    if (this.dprTimer >= 2 && this.frameCounter > 30 && !this.spaceDprDropped) {
+    if (this.dprTimer >= 2 && this.frameCounter > 30 && !(zPos < -380 || yPos > 5)) {
       this.dprTimer = 0;
       const maxDpr = Math.min(window.devicePixelRatio || 1, this.dprCap);
       const DPR_STEPS = [1.0, 1.25, 1.5, 2.0];
@@ -863,6 +869,38 @@ export class WorldSceneEngine {
       Math.max(256, Math.floor(this.viewW * next * 0.5)),
       Math.max(256, Math.floor(this.viewH * next * 0.5))
     );
+  }
+
+  // One real composer frame with EVERYTHING forced visible: compiles the
+  // render-target shader variants (space group, trees, reflections, shadow
+  // depth) behind the loading screen instead of mid-launch (was 150-530ms).
+  private warmUp() {
+    const prevAvenue = this.avenue.group.visible;
+    const prevArch = this.archGroup.visible;
+    const prevCosmos = this.spaceCosmos.group.visible;
+    this.avenue.group.visible = true;
+    this.archGroup.visible = true;
+    this.spaceCosmos.group.visible = true;
+
+    const culled: [THREE.Object3D, boolean][] = [];
+    this.scene.traverse((o) => {
+      const t = o as THREE.Mesh | THREE.Points | THREE.Sprite;
+      if (t instanceof THREE.Mesh || t instanceof THREE.Points || t instanceof THREE.Sprite) {
+        culled.push([o, o.frustumCulled]);
+        o.frustumCulled = false;
+      }
+    });
+
+    this.spaceCosmos.update(0, this.vehicle.position, 1);
+    this.renderer.shadowMap.needsUpdate = true;
+    this.updatePlanarReflection();
+    this.composer.render();
+
+    for (const [o, v] of culled) o.frustumCulled = v;
+    this.avenue.group.visible = prevAvenue;
+    this.archGroup.visible = prevArch;
+    this.spaceCosmos.group.visible = prevCosmos;
+    this.spaceCosmos.update(0, this.vehicle.position, 0);
   }
 
   private handleResize = () => {
