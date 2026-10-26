@@ -109,46 +109,6 @@ export function createVehicleController(
   const headL = mkHeadlight(-0.85);
   const headR = mkHeadlight(0.85);
 
-  // Barely-there volumetric haze cones so beams read in the dusk air
-  const beamMat = new THREE.ShaderMaterial({
-    transparent: true,
-    blending: THREE.AdditiveBlending,
-    depthWrite: false,
-    side: THREE.DoubleSide,
-    uniforms: { uOpacity: { value: 0.1 } },
-    vertexShader: `
-      varying vec3 vLocal;
-      varying float vFace;
-      void main() {
-        vLocal = position;
-        vec4 mv = modelViewMatrix * vec4(position, 1.0);
-        vFace = abs(dot(normalize(normalMatrix * normal), normalize(-mv.xyz)));
-        gl_Position = projectionMatrix * mv;
-      }
-    `,
-    fragmentShader: `
-      uniform float uOpacity;
-      varying vec3 vLocal;
-      varying float vFace;
-      void main() {
-        float d = clamp(-vLocal.z / 24.0, 0.0, 1.0);
-        float prof = smoothstep(0.0, 0.06, d) * pow(1.0 - d, 1.5);
-        float a = uOpacity * prof * (0.3 + 0.7 * pow(vFace, 1.3));
-        gl_FragColor = vec4(vec3(0.85, 0.92, 1.1) * a, a);
-      }
-    `,
-  });
-  const beamGeo = new THREE.CylinderGeometry(1.45, 0.07, 24, 14, 4, true);
-  beamGeo.translate(0, -12, 0);
-  beamGeo.rotateX(Math.PI / 2); // narrow end at lamp, wide end 24m forward
-  const beamL = new THREE.Mesh(beamGeo, beamMat);
-  beamL.position.set(-0.85, 1.0, -3.55);
-  const beamR = new THREE.Mesh(beamGeo, beamMat);
-  beamR.position.set(0.85, 1.0, -3.55);
-  beamL.layers.set(1);
-  beamR.layers.set(1);
-  root.add(beamL, beamR);
-
   const headGlowL = lampSprite('#ffd9a2', 0.62);
   headGlowL.position.set(-0.85, 0.98, -3.58);
   (headGlowL.material as THREE.SpriteMaterial).opacity = 0.75;
@@ -293,7 +253,7 @@ export function createVehicleController(
   const trailR = mkTrail();
 
   if (NO_EXTRAS) {
-    for (const o of [beamL, beamR, rearSpill, underglow, exhaust, trailL.mesh, trailR.mesh]) {
+    for (const o of [rearSpill, underglow, exhaust, trailL.mesh, trailR.mesh]) {
       o.visible = false;
     }
   }
@@ -599,7 +559,6 @@ export function createVehicleController(
       const flightDim = 1 - THREE.MathUtils.clamp(pitchAngle / 1.2, 0, 1) * 0.85;
       headL.intensity = headI * flightDim;
       headR.intensity = headI * flightDim;
-      beamMat.uniforms.uOpacity.value = (0.06 + Math.min(0.07, Math.abs(speed) * 0.0016)) * flightDim;
       (headGlowL.material as THREE.SpriteMaterial).opacity = 0.75 * flightDim;
       (headGlowR.material as THREE.SpriteMaterial).opacity = 0.75 * flightDim;
       headL.target.updateMatrixWorld();
