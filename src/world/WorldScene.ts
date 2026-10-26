@@ -311,7 +311,7 @@ export class WorldSceneEngine {
     this.composer.addPass(new RenderPass(this.scene, this.camera));
 
     this.bloomPass = new UnrealBloomPass(
-      new THREE.Vector2(width, height),
+      new THREE.Vector2(Math.floor(width * 0.5), Math.floor(height * 0.5)),
       0.28,
       0.48,
       0.96
@@ -319,6 +319,10 @@ export class WorldSceneEngine {
     this.composer.addPass(this.bloomPass);
     this.composer.addPass(new OutputPass());
     this.composer.addPass(new SMAAPass(width, height));
+
+    // Precompile all shaders behind the loading screen — kills first-frame
+    // compile hitches when the world first becomes visible.
+    this.renderer.compile(this.scene, this.camera);
 
     this.jumpToZone(WORLD_ZONES[0].id, true);
     // Spawn the car just behind the intro camera so it drives into frame.
@@ -673,12 +677,12 @@ export class WorldSceneEngine {
     // Space approach: strip the expensive passes BEFORE the launch, not at it.
     // Past z≈-435 the city is behind the camera anyway — hide world, kill the
     // planar reflection, and cap pixel ratio so the ring flight stays smooth.
-    const spaceApproach = zPos < -420;
+    const spaceApproach = zPos < -420 || yPos > 8;
     const hideCity = yPos > 16 || zPos < -435 || (this.flashKind === 'launch' && this.temporalFlash > 0.45);
     this.avenue.group.visible = !hideCity;
     this.archGroup.visible = !hideCity;
-    if (spaceApproach && this.currentDpr > 1.5) {
-      this.currentDpr = Math.max(1.35, this.currentDpr - dt * 0.9);
+    if (spaceApproach && this.currentDpr > 1.3) {
+      this.currentDpr = Math.max(1.3, this.currentDpr - dt * 1.2);
       this.renderer.setPixelRatio(this.currentDpr);
       this.composer.setPixelRatio(this.currentDpr);
     }

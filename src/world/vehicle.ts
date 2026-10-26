@@ -103,12 +103,12 @@ export function createVehicleController(
   const headL = mkHeadlight(-0.85);
   const headR = mkHeadlight(0.85);
 
-  const headGlowL = lampSprite('#ffd9a2', 0.62);
-  headGlowL.position.set(-0.85, 0.98, -3.58);
-  (headGlowL.material as THREE.SpriteMaterial).opacity = 0.75;
-  const headGlowR = lampSprite('#ffd9a2', 0.62);
-  headGlowR.position.set(0.85, 0.98, -3.58);
-  (headGlowR.material as THREE.SpriteMaterial).opacity = 0.75;
+  const headGlowL = lampSprite('#ffd9a2', 0.8);
+  headGlowL.position.set(-0.85, 0.98, -3.72);
+  (headGlowL.material as THREE.SpriteMaterial).opacity = 0.9;
+  const headGlowR = lampSprite('#ffd9a2', 0.8);
+  headGlowR.position.set(0.85, 0.98, -3.72);
+  (headGlowR.material as THREE.SpriteMaterial).opacity = 0.9;
   root.add(headGlowL, headGlowR);
 
   // Taillights: full-width rear glow + brake dynamics
@@ -126,11 +126,11 @@ export function createVehicleController(
     roughness: 0.25,
     metalness: 0.4,
   });
-  const lensGeo = new THREE.CircleGeometry(0.11, 20);
+  const lensGeo = new THREE.CircleGeometry(0.13, 20);
   for (const lx of [-1.05, -0.62, 0.62, 1.05]) {
     const lens = new THREE.Mesh(lensGeo, lensMat);
     lens.rotation.y = Math.PI; // face forward (-Z)
-    lens.position.set(lx, 1.02, -3.64);
+    lens.position.set(lx, 1.02, -3.78); // proud of the body so they don't sink inside
     lens.layers.set(1);
     root.add(lens);
   }
