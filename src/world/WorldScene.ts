@@ -299,6 +299,7 @@ export class WorldSceneEngine {
       type: THREE.HalfFloatType,
     });
     this.reflectCam = new THREE.PerspectiveCamera();
+    this.reflectCam.layers.enable(2); // layer 2: reflection-only lowpoly proxies
     palette.setReflectionData(this.reflectRT.texture, this.reflectMatrix);
 
     const composerRT = new THREE.WebGLRenderTarget(

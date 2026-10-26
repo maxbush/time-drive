@@ -230,6 +230,7 @@ export function createVehicleController(
           if (obj instanceof THREE.Mesh) {
             obj.castShadow = false; // lowpoly proxy casts the shadow instead
             obj.receiveShadow = true;
+            obj.layers.set(1); // hidden from the planar reflection camera
             if (obj.material) {
               const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
               for (const m of mats) {
@@ -280,28 +281,52 @@ export function createVehicleController(
 
   loadCarModel('bttf');
 
-  // Lowpoly twin for the shadow map: writes nothing to the framebuffer
-  // (colorWrite/depthWrite off) but casts the real directional shadow —
-  // ~15% of the triangles per shadow pass.
+  // Lowpoly twins, one file two roles:
+  //  a) shadow proxy — writes nothing to the framebuffer (colorWrite off) but
+  //     casts the real directional shadow. Scaled 0.985 so its silhouette sits
+  //     a hair inside the body -> no self-shadow acne on the detailed car.
+  //  b) reflection proxy — a REAL cheap material on layer 2, seen only by the
+  //     planar reflection camera (detailed car moved to layer 1).
   loader.load('./models/bttf_delorean_shadow.glb', (gltf) => {
-    const model = gltf.scene;
-    const bounds = new THREE.Box3().setFromObject(model);
-    const size = bounds.getSize(new THREE.Vector3());
-    const center = bounds.getCenter(new THREE.Vector3());
-    const scale = 7.2 / Math.max(size.x, size.z, 0.001);
-    model.scale.multiplyScalar(scale);
-    model.position.set(-center.x * scale, -bounds.min.y * scale + 0.06, -center.z * scale);
+    const mkNormalized = () => {
+      const model = gltf.scene.clone(true);
+      const bounds = new THREE.Box3().setFromObject(model);
+      const size = bounds.getSize(new THREE.Vector3());
+      const center = bounds.getCenter(new THREE.Vector3());
+      const scale = 7.2 / Math.max(size.x, size.z, 0.001);
+      model.scale.multiplyScalar(scale);
+      model.position.set(-center.x * scale, -bounds.min.y * scale + 0.06, -center.z * scale);
+      const wrapper = new THREE.Group();
+      wrapper.add(model);
+      wrapper.rotation.y = (size.x > size.z ? Math.PI / 2 : 0) + Math.PI;
+      return wrapper;
+    };
+
+    const shadowWrap = mkNormalized();
     const ghost = new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false });
-    model.traverse((obj) => {
+    shadowWrap.traverse((obj) => {
       if (obj instanceof THREE.Mesh) {
         obj.castShadow = true;
         obj.material = ghost;
       }
     });
-    const wrapper = new THREE.Group();
-    wrapper.add(model);
-    wrapper.rotation.y = (size.x > size.z ? Math.PI / 2 : 0) + Math.PI;
-    chassis.add(wrapper);
+    shadowWrap.scale.setScalar(0.985);
+    chassis.add(shadowWrap);
+
+    const reflWrap = mkNormalized();
+    const reflMat = new THREE.MeshStandardMaterial({
+      color: new THREE.Color('#232830'),
+      metalness: 0.7,
+      roughness: 0.35,
+    });
+    reflWrap.traverse((obj) => {
+      if (obj instanceof THREE.Mesh) {
+        obj.castShadow = false;
+        obj.material = reflMat;
+        obj.layers.set(2);
+      }
+    });
+    chassis.add(reflWrap);
   });
 
   let heading = 0;
