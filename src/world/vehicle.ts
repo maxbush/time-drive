@@ -153,9 +153,7 @@ export function createVehicleController(scene: THREE.Scene): VehicleController {
   tailMatL.position.set(-0.95, 1.28, 3.62);
   tailMatR.position.set(0.95, 1.28, 3.62);
   root.add(tailMatL, tailMatR);
-  const tailLight = new THREE.PointLight('#ff2c14', 2.2, 9, 1.8);
-  tailLight.position.set(0, 1.3, 3.85);
-  root.add(tailLight);
+
 
   // Soft red pool spilled onto the asphalt behind the car (asphalt-ref trick)
   const spillCanvas = document.createElement('canvas');
@@ -559,7 +557,6 @@ export function createVehicleController(scene: THREE.Scene): VehicleController {
       const tailHot = 0.5 + brakeGlow * 0.5 + (pitchAngle > 0.05 ? 0.35 : 0);
       (tailMatL.material as THREE.SpriteMaterial).opacity = Math.min(1, tailHot);
       (tailMatR.material as THREE.SpriteMaterial).opacity = Math.min(1, tailHot);
-      tailLight.intensity = 2.2 + brakeGlow * 9 + (pitchAngle > 0.05 ? 4 : 0);
       rearSpillMat.opacity = 0.35 + brakeGlow * 0.45 + (pitchAngle > 0.05 ? 0.3 : 0);
       prevSpeed = speed;
 

@@ -453,7 +453,7 @@ export class WorldSceneEngine {
       const pitch = THREE.MathUtils.clamp(this.orbitPitch, 0.05, 0.65);
       const dist = this.orbitDist;
       const horiz = dist * Math.cos(pitch);
-      const vert = dist * Math.sin(pitch) + 1.05;
+      const vert = dist * Math.sin(pitch) + 1.6;
 
       desiredPos.set(
         carPos.x + Math.sin(yaw) * horiz,
@@ -462,9 +462,9 @@ export class WorldSceneEngine {
       );
 
       desiredLook.set(
-        carPos.x - Math.sin(yaw) * 14.0,
-        carPos.y + 2.2,
-        carPos.z - Math.cos(yaw) * 14.0
+        carPos.x - Math.sin(yaw) * 16.0,
+        carPos.y + 3.6,
+        carPos.z - Math.cos(yaw) * 16.0
       );
       this.camera.fov = THREE.MathUtils.lerp(
         this.camera.fov,
