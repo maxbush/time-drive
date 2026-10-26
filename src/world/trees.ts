@@ -15,11 +15,27 @@ export interface TreePlacement {
  * 1 bark BufferGeometry + 1 leaf BufferGeometry, and renders all trees in the world
  * using just 2 InstancedMesh draw calls for 60 FPS performance!
  */
-export function loadAndPlaceElmTrees(scene: THREE.Scene, placements: TreePlacement[]) {
-  if (placements.length === 0) return;
+export function loadAndPlaceElmTrees(
+  scene: THREE.Scene,
+  placements: TreePlacement[]
+): Promise<void> {
+  if (placements.length === 0) return Promise.resolve();
+
+  // Chunk placements into 80m Z-segments so each InstancedMesh gets a tight
+  // bounding box and frustum culling can drop whole stretches of trees.
+  const CHUNK = 80;
+  const chunks = new Map<number, TreePlacement[]>();
+  for (const p of placements) {
+    const key = Math.floor(p.z / CHUNK);
+    const arr = chunks.get(key) ?? [];
+    arr.push(p);
+    chunks.set(key, arr);
+  }
+  const placementChunks = [...chunks.values()];
 
   const loader = new GLTFLoader();
-  loader.load(
+  return new Promise<void>((resolve) => {
+    loader.load(
     './models/tree_elm.glb',
     (gltf) => {
       const root = gltf.scene;
@@ -87,18 +103,20 @@ export function loadAndPlaceElmTrees(scene: THREE.Scene, placements: TreePlaceme
             mats.barkMat instanceof THREE.MeshStandardMaterial
               ? mats.barkMat
               : new THREE.MeshStandardMaterial({ color: '#4a3c31', roughness: 0.9 });
-          const barkInst = new THREE.InstancedMesh(mergedBark, finalBarkMat, placements.length);
-          barkInst.castShadow = true;
-          barkInst.receiveShadow = true;
-          placements.forEach((p, idx) => {
-            dummy.position.set(p.x, p.y, p.z);
-            dummy.rotation.set(0, p.rotY ?? (idx * 1.7) % (Math.PI * 2), 0);
-            dummy.scale.setScalar(p.scale);
-            dummy.updateMatrix();
-            barkInst.setMatrixAt(idx, dummy.matrix);
-          });
-          barkInst.instanceMatrix.needsUpdate = true;
-          treeGroup.add(barkInst);
+          for (const chunk of placementChunks) {
+            const barkInst = new THREE.InstancedMesh(mergedBark, finalBarkMat, chunk.length);
+            barkInst.castShadow = true;
+            barkInst.receiveShadow = true;
+            chunk.forEach((p, idx) => {
+              dummy.position.set(p.x, p.y, p.z);
+              dummy.rotation.set(0, p.rotY ?? (idx * 1.7) % (Math.PI * 2), 0);
+              dummy.scale.setScalar(p.scale);
+              dummy.updateMatrix();
+              barkInst.setMatrixAt(idx, dummy.matrix);
+            });
+            barkInst.instanceMatrix.needsUpdate = true;
+            treeGroup.add(barkInst);
+          }
         }
       }
 
@@ -119,26 +137,31 @@ export function loadAndPlaceElmTrees(scene: THREE.Scene, placements: TreePlaceme
               side: THREE.DoubleSide,
             });
           }
-          const leafInst = new THREE.InstancedMesh(mergedLeaf, finalLeafMat, placements.length);
-          leafInst.castShadow = true;
-          leafInst.receiveShadow = true;
-          placements.forEach((p, idx) => {
-            dummy.position.set(p.x, p.y, p.z);
-            dummy.rotation.set(0, p.rotY ?? (idx * 1.7) % (Math.PI * 2), 0);
-            dummy.scale.setScalar(p.scale);
-            dummy.updateMatrix();
-            leafInst.setMatrixAt(idx, dummy.matrix);
-          });
-          leafInst.instanceMatrix.needsUpdate = true;
-          treeGroup.add(leafInst);
+          for (const chunk of placementChunks) {
+            const leafInst = new THREE.InstancedMesh(mergedLeaf, finalLeafMat, chunk.length);
+            leafInst.castShadow = true;
+            leafInst.receiveShadow = true;
+            leafInst.layers.set(1); // skip the planar reflection pass
+            chunk.forEach((p, idx) => {
+              dummy.position.set(p.x, p.y, p.z);
+              dummy.rotation.set(0, p.rotY ?? (idx * 1.7) % (Math.PI * 2), 0);
+              dummy.scale.setScalar(p.scale);
+              dummy.updateMatrix();
+              leafInst.setMatrixAt(idx, dummy.matrix);
+            });
+            leafInst.instanceMatrix.needsUpdate = true;
+            treeGroup.add(leafInst);
+          }
         }
       }
 
       scene.add(treeGroup);
+      resolve();
     },
     undefined,
     () => {
-      // Ignore if GLB missing
+      resolve(); // Ignore if GLB missing
     }
-  );
+    );
+  });
 }

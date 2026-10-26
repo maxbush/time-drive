@@ -261,7 +261,7 @@ export class WorldSceneEngine {
     this.scene.add(this.archGroup);
 
     // Load real 3D elm trees (`tree_elm.glb`) onto sidewalk planter islands, park mounds & Confluence terraces!
-    loadAndPlaceElmTrees(this.scene, [
+    const treesReady = loadAndPlaceElmTrees(this.scene, [
       ...this.avenue.treePlacements,
       ...archResult.treePlacements,
     ]);
@@ -277,7 +277,11 @@ export class WorldSceneEngine {
     }
 
     this.vehicle = createVehicleController(this.scene, onProgress);
-    this.ready = this.vehicle.ready;
+    // Loading screen waits for the car AND the tree GLB; tree shaders get a
+    // second compile so they never stutter on first appearance.
+    this.ready = Promise.all([this.vehicle.ready, treesReady]).then(() => {
+      this.renderer.compile(this.scene, this.camera);
+    });
 
     // Cheap planar reflection: sprites, particles & micro-props stay on layer 1
     // (main camera sees them, reflection camera does not).
