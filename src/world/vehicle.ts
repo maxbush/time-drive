@@ -235,7 +235,7 @@ export function createVehicleController(
               const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
               for (const m of mats) {
                 if (m instanceof THREE.MeshStandardMaterial) {
-                  m.envMapIntensity = 1.45;
+                  m.envMapIntensity = 2.4; // stronger env reflections — wet mirror look
                   if (m.name === 'orange_glass') {
                     m.emissive.setRGB(0, 0, 0);
                     m.emissiveIntensity = 0;
@@ -253,6 +253,12 @@ export function createVehicleController(
                   if (m.metalness < 0.3 && m.roughness > 0.6) {
                     m.metalness = 0.82;
                     m.roughness = 0.22;
+                  }
+                  // Gloss pass: non-glass body mats get a tight specular — the
+                  // brushed-steel DeLorean should read almost chrome at dusk.
+                  if (!/glass|glas|glass_?0|tire|tyre|wheel/i.test(m.name ?? '')) {
+                    m.metalness = Math.max(m.metalness, 0.85);
+                    m.roughness = Math.min(m.roughness, 0.18);
                   }
                 }
               }
