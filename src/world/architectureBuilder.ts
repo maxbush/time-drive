@@ -1,6 +1,7 @@
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { MaterialPalette } from './materials';
+import { mergeIntoChunks } from './chunkedMerge';
 import { createPastRoadSignTexture, createShowcaseScreenTexture, createSignageTexture } from './textures';
 
 export type MatKey =
@@ -110,12 +111,17 @@ export class ArchitectureBuilder {
       normalized.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(count * 2), 2));
     }
 
+    // Weld identical position/normal/uv tuples -> indexed geometry.
+    // GPU post-transform vertex cache only works on indexed draws.
+    const deduped = mergeVertices(normalized, 1e-4);
+    if (deduped !== normalized) normalized.dispose();
+
     let arr = this.buckets.get(mat);
     if (!arr) {
       arr = [];
       this.buckets.set(mat, arr);
     }
-    arr.push(normalized);
+    arr.push(deduped);
   }
 
   public addBox(
@@ -370,22 +376,15 @@ export class ArchitectureBuilder {
 
     for (const [key, geos] of this.buckets.entries()) {
       if (geos.length === 0) continue;
-      const merged = mergeGeometries(geos, false);
-      geos.forEach((g) => g.dispose());
-      if (!merged) continue;
 
       const mat = palette[key] as THREE.Material;
-      const mesh = new THREE.Mesh(merged, mat);
-      if (!noShadowMats.has(key)) {
-        mesh.castShadow = true;
-        mesh.receiveShadow = true;
-      } else if (!glassMats.has(key)) {
-        mesh.receiveShadow = true;
-      }
-      if (glassMats.has(key)) {
-        mesh.renderOrder = 3;
-      }
-      root.add(mesh);
+      const isGlass = glassMats.has(key);
+      const meshes = mergeIntoChunks(geos, mat, {
+        castShadow: !noShadowMats.has(key),
+        receiveShadow: !isGlass,
+        renderOrder: isGlass ? 3 : undefined,
+      });
+      for (const mesh of meshes) root.add(mesh);
     }
 
     if (this.windowQuads.length > 0) {

@@ -114,6 +114,8 @@ const STATION_STOPS: Array<{ id: Exclude<ProjectStationId, null>; stopZ: number;
 
 export interface WorldTelemetry {
   fps: number;
+  drawCalls: number;
+  triangles: number;
   speedKmh: number;
   zPos: number;
   yPos: number;
@@ -156,7 +158,8 @@ export class WorldSceneEngine {
 
   private allLightAnchors: LightAnchor[] = [];
   private dynamicLightPool: THREE.PointLight[] = [];
-  private readonly LIGHT_POOL_SIZE = 12;
+  private readonly LIGHT_POOL_SIZE = 8;
+  private lastLightSortPos = new THREE.Vector3(1e9, 0, 0);
 
   private cameraMode: CameraMode = 'chase';
   // Auto-Cruise is ON by default so the car drives itself and slows down at each project!
@@ -185,6 +188,11 @@ export class WorldSceneEngine {
   private smoothCamPos = new THREE.Vector3(2.8, 2.5, 323);
   private smoothLookAt = new THREE.Vector3(2.8, 1.8, 290);
 
+  private currentDpr = 1;
+  private dprTimer = 0;
+  private viewW = 1;
+  private viewH = 1;
+
   private animFrameId = 0;
   private lastPerfTime = performance.now();
   private elapsedTime = 0;
@@ -201,13 +209,17 @@ export class WorldSceneEngine {
 
     const width = Math.max(1, container.clientWidth);
     const height = Math.max(1, container.clientHeight);
+    this.viewW = width;
+    this.viewH = height;
     const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+    this.currentDpr = pixelRatio;
 
     this.renderer = new THREE.WebGLRenderer({
       antialias: true,
       powerPreference: 'high-performance',
       stencil: false,
     });
+    this.renderer.info.autoReset = false;
     this.renderer.setSize(width, height);
     this.renderer.setPixelRatio(pixelRatio);
     this.renderer.shadowMap.enabled = true;
@@ -219,6 +231,7 @@ export class WorldSceneEngine {
 
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(50, width / height, 0.35, 2200);
+    this.camera.layers.enable(1); // layer 1: visible in main cam, excluded from planar reflection
 
     const texLib = createTextureLibrary(this.renderer);
     const palette = createMaterialPalette(texLib);
@@ -247,6 +260,14 @@ export class WorldSceneEngine {
     }
 
     this.vehicle = createVehicleController(this.scene);
+
+    // Cheap planar reflection: sprites, particles & micro-props stay on layer 1
+    // (main camera sees them, reflection camera does not).
+    this.scene.traverse((o) => {
+      if ((o as THREE.Sprite).isSprite || (o as THREE.Points).isPoints || o.name === 'reflSkip') {
+        o.layers.set(1);
+      }
+    });
 
     const reflW = Math.max(256, Math.floor(width * pixelRatio * 0.5));
     const reflH = Math.max(256, Math.floor(height * pixelRatio * 0.5));
@@ -318,6 +339,13 @@ export class WorldSceneEngine {
 
   private updateDynamicLights() {
     const focus = this.vehicle.position;
+    const dx = focus.x - this.lastLightSortPos.x;
+    const dz = focus.z - this.lastLightSortPos.z;
+    if (dx * dx + dz * dz < 225) {
+      // Car hasn't moved enough for the nearest-light set to change.
+      return;
+    }
+    this.lastLightSortPos.copy(focus);
     this.allLightAnchors.sort((a, b) => {
       const da =
         (a.position.x - focus.x) * (a.position.x - focus.x) +
@@ -497,7 +525,7 @@ export class WorldSceneEngine {
     this.reflectCam.fov = this.camera.fov;
     this.reflectCam.aspect = this.camera.aspect;
     this.reflectCam.near = this.camera.near;
-    this.reflectCam.far = 380;
+    this.reflectCam.far = 150; // wet asphalt only needs nearby reflections
     this.reflectCam.position.set(camPos.x, -camPos.y, camPos.z);
 
     const target = new THREE.Vector3(
@@ -587,6 +615,7 @@ export class WorldSceneEngine {
 
     const spaceFactor = THREE.MathUtils.clamp((yPos - 5) / 55 + (-442 - zPos) / 35, 0, 1);
 
+    this.renderer.info.reset();
     this.vehicle.update(dt, this.input, this.autoCruise, slowdownFactor);
     this.updateCamera(dt);
     this.avenue.update(this.elapsedTime);
@@ -601,7 +630,9 @@ export class WorldSceneEngine {
     const curZone = this.resolveCurrentZone(this.vehicle.position.z, this.vehicle.position.y);
     this.activeZoneId = curZone.id;
 
-    this.updatePlanarReflection();
+    if (this.frameCounter % 2 === 0) {
+      this.updatePlanarReflection();
+    }
     this.composer.render();
 
     this.frameCounter++;
@@ -611,6 +642,30 @@ export class WorldSceneEngine {
       this.frameCounter = 0;
       this.fpsAccum = 0;
       this.emitTelemetry();
+    }
+
+    // Adaptive resolution: scale pixel ratio to hold ~60fps.
+    this.dprTimer += dt;
+    if (this.dprTimer >= 2 && this.frameCounter > 30) {
+      this.dprTimer = 0;
+      const maxDpr = Math.min(window.devicePixelRatio || 1, 2);
+      let next = this.currentDpr;
+      if (this.currentFps < 50 && next > 1.25) {
+        next = Math.max(1.25, next - 0.25);
+      } else if (this.currentFps > 57 && next < maxDpr) {
+        next = Math.min(maxDpr, next + 0.1);
+      }
+      if (next !== this.currentDpr) {
+        this.currentDpr = next;
+        this.renderer.setPixelRatio(next);
+        this.composer.setPixelRatio(next);
+        this.renderer.setSize(this.viewW, this.viewH);
+        this.composer.setSize(this.viewW, this.viewH);
+        this.reflectRT.setSize(
+          Math.max(256, Math.floor(this.viewW * next * 0.5)),
+          Math.max(256, Math.floor(this.viewH * next * 0.5))
+        );
+      }
     }
   };
 
@@ -623,6 +678,8 @@ export class WorldSceneEngine {
 
     this.onTelemetry({
       fps: this.currentFps,
+      drawCalls: this.renderer.info.render.calls,
+      triangles: this.renderer.info.render.triangles,
       speedKmh: Math.round(Math.abs(this.vehicle.speed) * 3.2),
       zPos: Math.round(zPos),
       yPos: Math.round(yPos),
@@ -682,7 +739,9 @@ export class WorldSceneEngine {
     if (this.disposed) return;
     const width = Math.max(1, this.container.clientWidth);
     const height = Math.max(1, this.container.clientHeight);
-    const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+    this.viewW = width;
+    this.viewH = height;
+    const pixelRatio = this.currentDpr;
 
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();

@@ -79,6 +79,8 @@ export default function App() {
 
   const [telemetry, setTelemetry] = useState<WorldTelemetry>({
     fps: 60,
+    drawCalls: 0,
+    triangles: 0,
     speedKmh: 0,
     zPos: 315,
     yPos: 0,
@@ -543,6 +545,9 @@ export default function App() {
                     {telemetry.yPos > 5 ? `ALT: ${telemetry.yPos}m` : `Z: ${telemetry.zPos}m`}
                   </span>
                   <span className="text-emerald-400">{telemetry.fps} FPS</span>
+                  <span className="hidden lg:inline text-slate-500">
+                    {telemetry.drawCalls} DC · {(telemetry.triangles / 1e6).toFixed(1)}M△
+                  </span>
                 </div>
               </div>
             </div>

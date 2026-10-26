@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { mergeIntoChunks } from './chunkedMerge';
 import { LightAnchor } from './architectureBuilder';
 import { MaterialPalette } from './materials';
 import { TreePlacement } from './trees';
@@ -222,11 +223,13 @@ export function buildGrandAvenue(palette: MaterialPalette): AvenueSystem {
     const mh = new THREE.Mesh(mhGeo, palette.manholeMat);
     const mx = z % 68 === 0 ? -2.4 : 2.6;
     mh.position.set(mx, 0.066, z);
+    mh.name = 'reflSkip';
     group.add(mh);
 
     for (const side of [-1, 1] as const) {
       const gr = new THREE.Mesh(grateGeo, palette.drainGrateMat);
       gr.position.set(side * 10.55, 0.02, z + 12);
+      gr.name = 'reflSkip';
       group.add(gr);
     }
   }
@@ -315,13 +318,14 @@ export function buildGrandAvenue(palette: MaterialPalette): AvenueSystem {
 
   const addMerged = (geos: THREE.BufferGeometry[], mat: THREE.Material, shadow = true) => {
     if (geos.length === 0) return;
-    const merged = mergeGeometries(geos, false);
-    geos.forEach((g) => g.dispose());
-    if (!merged) return;
-    const mesh = new THREE.Mesh(merged, mat);
-    mesh.receiveShadow = true;
-    if (shadow) mesh.castShadow = true;
-    group.add(mesh);
+    const deduped = geos.map((g) => {
+      const d = mergeVertices(g, 1e-4);
+      if (d !== g) g.dispose();
+      return d;
+    });
+    for (const mesh of mergeIntoChunks(deduped, mat, { castShadow: shadow, receiveShadow: true })) {
+      group.add(mesh);
+    }
   };
 
   addMerged(paverGeos, palette.sidewalkPaver, false);

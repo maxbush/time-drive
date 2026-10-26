@@ -2,6 +2,11 @@ import * as THREE from 'three';
 import { mulberry32 } from './textures';
 import { MaterialPalette } from './materials';
 
+const _lightDir = new THREE.Vector3();
+const _lightRight = new THREE.Vector3();
+const _lightUp = new THREE.Vector3();
+const WORLD_UP = new THREE.Vector3(0, 1, 0);
+
 export interface EnvironmentSystem {
   skyMesh: THREE.Mesh;
   distantSkylineGroup: THREE.Group;
@@ -300,6 +305,19 @@ export function createEnvironment(
 
       skyDirLight.target.position.set(focusPos.x, 0, focusPos.z);
       skyDirLight.position.set(focusPos.x + 55, 68, focusPos.z + 45);
+
+      // Snap the shadow camera to shadow-map texel increments so shadows
+      // don't shimmer/crawl as the car moves continuously.
+      const texel = (shadowSpan * 2) / skyDirLight.shadow.mapSize.x;
+      _lightDir.subVectors(skyDirLight.position, skyDirLight.target.position).normalize();
+      _lightRight.crossVectors(WORLD_UP, _lightDir).normalize();
+      _lightUp.crossVectors(_lightDir, _lightRight).normalize();
+      const tp = skyDirLight.target.position;
+      const dR = Math.round(tp.dot(_lightRight) / texel) * texel - tp.dot(_lightRight);
+      const dU = Math.round(tp.dot(_lightUp) / texel) * texel - tp.dot(_lightUp);
+      tp.addScaledVector(_lightRight, dR).addScaledVector(_lightUp, dU);
+      skyDirLight.position.addScaledVector(_lightRight, dR).addScaledVector(_lightUp, dU);
+
       skyDirLight.target.updateMatrixWorld();
 
       const pulseA = 0.35 + 0.65 * Math.pow(0.5 + 0.5 * Math.sin(time * 2.2), 3);
