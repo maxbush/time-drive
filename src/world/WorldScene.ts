@@ -176,6 +176,7 @@ export class WorldSceneEngine {
   private orbitYaw = 0.04;
   private orbitPitch = 0.13;
   private orbitDist = 8.2;
+  private introT = 0;
   private isPointerDown = false;
   private lastPointerX = 0;
   private lastPointerY = 0;
@@ -313,6 +314,8 @@ export class WorldSceneEngine {
     this.composer.addPass(new OutputPass());
 
     this.jumpToZone(WORLD_ZONES[0].id, true);
+    // Spawn the car just behind the intro camera so it drives into frame.
+    this.vehicle.setPose(2.8, 344, 0, 0, 0);
     this.updateDynamicLights();
 
     window.addEventListener('resize', this.handleResize);
@@ -439,6 +442,7 @@ export class WorldSceneEngine {
 
     const desiredPos = new THREE.Vector3();
     const desiredLook = new THREE.Vector3();
+    this.introT += dt;
 
     if (carPitch > 0.12) {
       // Act III: 90-degree vertical ascent into the cosmos!
@@ -504,6 +508,14 @@ export class WorldSceneEngine {
         carPos.z + Math.cos(this.orbitYaw) * horiz
       );
       desiredLook.set(carPos.x, carPos.y + 3.0, carPos.z - 4.0);
+    }
+
+    // Intro: hold a fixed roadside camera while the DeLorean pulls in from
+    // behind, then blend into the normal chase pose over ~2s.
+    if (this.introT < 3.4) {
+      const k = THREE.MathUtils.smoothstep(this.introT, 1.3, 3.4);
+      desiredPos.lerpVectors(new THREE.Vector3(4.6, 2.6, 335), desiredPos, k);
+      desiredLook.lerpVectors(new THREE.Vector3(-0.5, 1.9, 298), desiredLook, k);
     }
 
     const damp = 1 - Math.exp(-8.5 * dt);
