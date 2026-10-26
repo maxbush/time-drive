@@ -19,13 +19,11 @@ export interface VehicleController {
   setCarModel: (id: CarModelId) => void;
   setPose: (x: number, z: number, heading?: number, y?: number, pitch?: number) => void;
   ready: Promise<void>;
-  onProgress?: (fraction: number) => void;
   update: (
     dt: number,
     input: { forward: boolean; backward: boolean; left: boolean; right: boolean; boost: boolean },
     autoCruise: boolean,
-    stationSlowdownFactor: number,
-    flashBoost?: number
+    stationSlowdownFactor: number
   ) => void;
 }
 
@@ -45,10 +43,6 @@ function makeRadialGlowTexture(): THREE.Texture {
   t.colorSpace = THREE.SRGBColorSpace;
   return t;
 }
-
-const NO_EXTRAS =
-  typeof window !== 'undefined' &&
-  new URLSearchParams(window.location.search).has('noextras');
 
 export function createVehicleController(
   scene: THREE.Scene,
@@ -80,7 +74,6 @@ export function createVehicleController(
   const cabinMesh = new THREE.Mesh(new THREE.BoxGeometry(2.45, 0.68, 3.2), glassMat);
   cabinMesh.position.set(0, 1.52, -0.2);
   fallbackGroup.add(cabinMesh);
-  fallbackGroup.visible = false; // only shown if the GLB genuinely fails to load
   chassis.add(fallbackGroup);
 
   const glowTex = makeRadialGlowTexture();
@@ -97,11 +90,11 @@ export function createVehicleController(
     return s;
   };
 
-  // Dual headlights — asphalt-ref tuning: very wide soft wash, mounted low
+  // Dual real headlights: tight warm beams pooling on the asphalt ahead
   const mkHeadlight = (x: number) => {
-    const spot = new THREE.SpotLight('#eef5ff', 18, 48, Math.PI / 6.2, 0.58, 1.25);
-    spot.position.set(x, 0.62, -3.55);
-    spot.target.position.set(x * 0.85, 0.04, -26);
+    const spot = new THREE.SpotLight('#ffe2b0', 34, 68, 0.24, 0.6, 1.55);
+    spot.position.set(x, 1.05, -3.55);
+    spot.target.position.set(x * 1.8, -0.5, -27);
     root.add(spot);
     root.add(spot.target);
     return spot;
@@ -123,48 +116,9 @@ export function createVehicleController(
   tailMatL.position.set(-0.95, 1.28, 3.62);
   tailMatR.position.set(0.95, 1.28, 3.62);
   root.add(tailMatL, tailMatR);
-
-
-  // Soft red pool spilled onto the asphalt behind the car (asphalt-ref trick)
-  const spillCanvas = document.createElement('canvas');
-  spillCanvas.width = 128;
-  spillCanvas.height = 128;
-  const sctx = spillCanvas.getContext('2d')!;
-  const sgrad = sctx.createRadialGradient(64, 64, 4, 64, 64, 60);
-  sgrad.addColorStop(0, 'rgba(220, 38, 38, 0.5)');
-  sgrad.addColorStop(0.55, 'rgba(220, 38, 38, 0.16)');
-  sgrad.addColorStop(1, 'rgba(220, 38, 38, 0)');
-  sctx.fillStyle = sgrad;
-  sctx.fillRect(0, 0, 128, 128);
-  const spillTex = new THREE.CanvasTexture(spillCanvas);
-  const rearSpillMat = new THREE.MeshBasicMaterial({
-    map: spillTex,
-    transparent: true,
-    depthWrite: false,
-    blending: THREE.AdditiveBlending,
-    opacity: 0.55,
-    polygonOffset: true,
-    polygonOffsetFactor: -4,
-  });
-  const rearSpill = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 2.8), rearSpillMat);
-  rearSpill.rotation.x = -Math.PI / 2;
-  rearSpill.position.set(0, 0.03, 4.4);
-  rearSpill.layers.set(1);
-  root.add(rearSpill);
-
-  // 88-MPH blue underglow (bridge-ref) — fades in on flash/boost/launch
-  const underglowMat = new THREE.MeshBasicMaterial({
-    color: new THREE.Color(0.25, 0.6, 2.4),
-    transparent: true,
-    opacity: 0,
-    blending: THREE.AdditiveBlending,
-    depthWrite: false,
-  });
-  const underglow = new THREE.Mesh(new THREE.PlaneGeometry(5.2, 2.6), underglowMat);
-  underglow.rotation.x = -Math.PI / 2;
-  underglow.position.y = 0.05;
-  underglow.layers.set(1);
-  root.add(underglow);
+  const tailLight = new THREE.PointLight('#ff2c14', 3.5, 11, 1.8);
+  tailLight.position.set(0, 1.3, 3.85);
+  root.add(tailLight);
 
   // Exhaust / time-jump flame trail particle pool (BTTF fire trails)
   const P_COUNT = 240;
@@ -187,145 +141,7 @@ export function createVehicleController(
   });
   const exhaust = new THREE.Points(pGeo, pMat);
   exhaust.frustumCulled = false;
-  exhaust.layers.set(1);
   scene.add(exhaust);
-
-  // ---- BTTF fire-trail ribbons: two flame ribbons streaming off rear wheels ----
-  const TRAIL_N = 56;
-  const trailIdx: number[] = [];
-  for (let i = 0; i < TRAIL_N - 1; i++) {
-    const v = i * 2;
-    trailIdx.push(v, v + 1, v + 2, v + 1, v + 3, v + 2);
-  }
-  const mkTrail = () => {
-    const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(TRAIL_N * 2 * 3), 3));
-    g.setAttribute('aAge', new THREE.BufferAttribute(new Float32Array(TRAIL_N * 2), 1));
-    g.setAttribute('aEdge', new THREE.BufferAttribute(new Float32Array(TRAIL_N * 2), 1));
-    g.setIndex(trailIdx);
-    const m = new THREE.ShaderMaterial({
-      transparent: true,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-      side: THREE.DoubleSide,
-      uniforms: { uOpacity: { value: 0 }, uTime: { value: 0 } },
-      vertexShader: `
-        attribute float aAge;
-        attribute float aEdge;
-        varying float vAge;
-        varying float vEdge;
-        uniform float uTime;
-        void main() {
-          vAge = aAge;
-          vEdge = aEdge;
-          vec3 p = position;
-          p.y += sin(aAge * 9.0 - uTime * 9.0) * 0.07 * aAge;
-          gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
-        }
-      `,
-      fragmentShader: `
-        uniform float uOpacity;
-        varying float vAge;
-        varying float vEdge;
-        void main() {
-          float edge = sin(vEdge * 3.14159);
-          vec3 col = mix(vec3(3.0, 2.4, 1.2), vec3(2.2, 0.5, 0.08), smoothstep(0.0, 0.45, vAge));
-          col = mix(col, vec3(0.4, 0.04, 0.0), smoothstep(0.45, 1.0, vAge));
-          float a = uOpacity * edge * pow(1.0 - vAge, 1.25);
-          gl_FragColor = vec4(col * a, a);
-        }
-      `,
-    });
-    const mesh = new THREE.Mesh(g, m);
-    mesh.frustumCulled = false;
-    mesh.layers.set(1);
-    scene.add(mesh);
-    return {
-      mesh,
-      geo: g,
-      mat: m,
-      pos: new Float32Array(TRAIL_N * 3),
-      right: new Float32Array(TRAIL_N * 3),
-      count: 0,
-    };
-  };
-  const trailL = mkTrail();
-  const trailR = mkTrail();
-
-  if (NO_EXTRAS) {
-    for (const o of [rearSpill, underglow, exhaust, trailL.mesh, trailR.mesh]) {
-      o.visible = false;
-    }
-  }
-
-  const updateTrail = (
-    trail: ReturnType<typeof mkTrail>,
-    emitter: THREE.Vector3,
-    emitting: boolean,
-    t: number
-  ) => {
-    const m = trail.mat;
-    const targetOp = emitting ? 0.9 : 0;
-    m.uniforms.uOpacity.value = THREE.MathUtils.lerp(
-      m.uniforms.uOpacity.value,
-      targetOp,
-      1 - Math.exp(-8 * t)
-    );
-    m.uniforms.uTime.value = exhaustTime;
-    trail.mesh.visible = m.uniforms.uOpacity.value > 0.02;
-    if (!trail.mesh.visible) {
-      trail.count = 0;
-      return;
-    }
-
-    if (emitting) {
-      // shift history one slot back, write fresh head point
-      if (trail.count > 0) {
-        const lx = trail.pos[0] - emitter.x;
-        const ly = trail.pos[1] - emitter.y;
-        const lz = trail.pos[2] - emitter.z;
-        if (lx * lx + ly * ly + lz * lz > 36) trail.count = 0; // trail teleported: reset
-      }
-      if (trail.count > 0) {
-        trail.pos.copyWithin(3, 0, (TRAIL_N - 1) * 3);
-        trail.right.copyWithin(3, 0, (TRAIL_N - 1) * 3);
-      }
-      trail.pos[0] = emitter.x;
-      trail.pos[1] = emitter.y;
-      trail.pos[2] = emitter.z;
-      // car's lateral axis in world space
-      trail.right[0] = root.matrixWorld.elements[0];
-      trail.right[1] = root.matrixWorld.elements[1];
-      trail.right[2] = root.matrixWorld.elements[2];
-      trail.count = Math.min(TRAIL_N, trail.count + 1);
-    }
-
-    // rebuild strip from history
-    const posAttr = trail.geo.attributes.position as THREE.BufferAttribute;
-    const ageAttr = trail.geo.attributes.aAge as THREE.BufferAttribute;
-    const edgeAttr = trail.geo.attributes.aEdge as THREE.BufferAttribute;
-    const n = Math.max(1, trail.count);
-    for (let i = 0; i < TRAIL_N; i++) {
-      const hi = Math.min(i, n - 1);
-      const age = i / (TRAIL_N - 1);
-      const w = 0.42 * (1 - age * 0.75);
-      const px = trail.pos[hi * 3];
-      const py = trail.pos[hi * 3 + 1];
-      const pz = trail.pos[hi * 3 + 2];
-      const rx = trail.right[hi * 3];
-      const ry = trail.right[hi * 3 + 1];
-      const rz = trail.right[hi * 3 + 2];
-      posAttr.setXYZ(i * 2, px - rx * w, py - ry * w - 0.04, pz - rz * w);
-      posAttr.setXYZ(i * 2 + 1, px + rx * w, py + ry * w + 0.04, pz + rz * w);
-      ageAttr.setX(i * 2, age);
-      ageAttr.setX(i * 2 + 1, age);
-      edgeAttr.setX(i * 2, 0);
-      edgeAttr.setX(i * 2 + 1, 1);
-    }
-    posAttr.needsUpdate = true;
-    ageAttr.needsUpdate = true;
-    edgeAttr.needsUpdate = true;
-  };
 
   const loader = new GLTFLoader();
   const loadedModels = new Map<CarModelId, THREE.Group>();
@@ -468,7 +284,7 @@ export function createVehicleController(
       chassis.rotation.set(0, 0, 0);
       root.updateMatrixWorld(true);
     },
-    update: (dt, input, autoCruise, stationSlowdownFactor, flashBoost = 0) => {
+    update: (dt, input, autoCruise, stationSlowdownFactor) => {
       exhaustTime += dt;
       const maxSpeed = input.boost ? 56 : 34;
       const accel = input.boost ? 36 : 22;
@@ -550,31 +366,21 @@ export function createVehicleController(
       const tailHot = 0.5 + brakeGlow * 0.5 + (pitchAngle > 0.05 ? 0.35 : 0);
       (tailMatL.material as THREE.SpriteMaterial).opacity = Math.min(1, tailHot);
       (tailMatR.material as THREE.SpriteMaterial).opacity = Math.min(1, tailHot);
-      rearSpillMat.opacity = 0.35 + brakeGlow * 0.45 + (pitchAngle > 0.05 ? 0.3 : 0);
+      tailLight.intensity = 3.5 + brakeGlow * 18 + (pitchAngle > 0.05 ? 6 : 0);
       prevSpeed = speed;
 
       // --- Headlight dynamics: subtle boost surge + beam flicker ---------------
       const flicker = input.boost ? Math.sin(exhaustTime * 47) * 3.5 : 0;
       const headI = 30 + Math.min(14, Math.abs(speed) * 0.22) + flicker;
-      const flightDim = 1 - THREE.MathUtils.clamp(pitchAngle / 1.2, 0, 1) * 0.85;
-      headL.intensity = headI * flightDim;
-      headR.intensity = headI * flightDim;
-      (headGlowL.material as THREE.SpriteMaterial).opacity = 0.75 * flightDim;
-      (headGlowR.material as THREE.SpriteMaterial).opacity = 0.75 * flightDim;
+      headL.intensity = headI;
+      headR.intensity = headI;
       headL.target.updateMatrixWorld();
       headR.target.updateMatrixWorld();
 
-      // --- Space-flight dynamics: BTTF fire-trail exhaust ----------------------
+      // --- Space-flight dynamics: heat glow + BTTF fire-trail exhaust ----------
       const flightFactor = THREE.MathUtils.clamp(pitchAngle / 1.2, 0, 1);
       const boosting = input.boost && Math.abs(speed) > 28;
-      const emitting = flightFactor > 0.02 || boosting || flashBoost > 0.25;
-
-      // 88-MPH underglow breathes with the same emit state
-      underglowMat.opacity = THREE.MathUtils.lerp(
-        underglowMat.opacity,
-        emitting ? 0.55 + Math.sin(exhaustTime * 21) * 0.1 : 0,
-        1 - Math.exp(-6 * dt)
-      );
+      const emitting = flightFactor > 0.02 || boosting;
 
       carVel.copy(root.position).sub(prevPos).divideScalar(Math.max(dt, 0.001));
       prevPos.copy(root.position);
@@ -582,9 +388,6 @@ export function createVehicleController(
       root.updateMatrixWorld();
       emitA.set(-1.05, 0.32, 3.55).applyMatrix4(root.matrixWorld);
       emitB.set(1.05, 0.32, 3.55).applyMatrix4(root.matrixWorld);
-
-      updateTrail(trailL, emitA, emitting, dt);
-      updateTrail(trailR, emitB, emitting, dt);
 
       for (let i = 0; i < P_COUNT; i++) {
         const i3 = i * 3;

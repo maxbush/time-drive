@@ -653,7 +653,7 @@ export class WorldSceneEngine {
     const spaceFactor = THREE.MathUtils.clamp((yPos - 5) / 55 + (-442 - zPos) / 35, 0, 1);
 
     this.renderer.info.reset();
-    this.vehicle.update(dt, this.input, this.autoCruise, slowdownFactor, this.temporalFlash);
+    this.vehicle.update(dt, this.input, this.autoCruise, slowdownFactor);
     this.updateCamera(dt);
     this.avenue.update(this.elapsedTime);
     this.envSystem.update(this.elapsedTime, this.vehicle.position);
