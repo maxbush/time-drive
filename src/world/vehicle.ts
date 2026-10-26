@@ -46,6 +46,10 @@ function makeRadialGlowTexture(): THREE.Texture {
   return t;
 }
 
+const NO_EXTRAS =
+  typeof window !== 'undefined' &&
+  new URLSearchParams(window.location.search).has('noextras');
+
 export function createVehicleController(
   scene: THREE.Scene,
   onProgress?: (fraction: number) => void
@@ -287,6 +291,12 @@ export function createVehicleController(
   };
   const trailL = mkTrail();
   const trailR = mkTrail();
+
+  if (NO_EXTRAS) {
+    for (const o of [beamL, beamR, rearSpill, underglow, exhaust, trailL.mesh, trailR.mesh]) {
+      o.visible = false;
+    }
+  }
 
   const updateTrail = (
     trail: ReturnType<typeof mkTrail>,
