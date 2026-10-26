@@ -70,6 +70,8 @@ export default function App() {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const engineRef = useRef<WorldSceneEngine | null>(null);
   const [hudVisible, setHudVisible] = useState(true);
+  const [loading, setLoading] = useState(true);
+  const [loadPct, setLoadPct] = useState(0);
   const [demoModalOpen, setDemoModalOpen] = useState(false);
   const [demoSubject, setDemoSubject] = useState('Обсудить проект / Запросить демо');
   const [formSent, setFormSent] = useState(false);
@@ -106,10 +108,15 @@ export default function App() {
     const el = containerRef.current;
     if (!el) return;
 
-    const engine = new WorldSceneEngine(el, (data) => {
-      setTelemetry(data);
-    });
+    const engine = new WorldSceneEngine(
+      el,
+      (data) => {
+        setTelemetry(data);
+      },
+      (p) => setLoadPct(Math.round(p * 100))
+    );
     engineRef.current = engine;
+    engine.ready.then(() => setLoading(false));
 
     const onKey = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName;
@@ -147,6 +154,29 @@ export default function App() {
     <div className="relative w-full h-full overflow-hidden bg-[#05070b] select-none">
       {/* 3D WebGL Canvas */}
       <div ref={containerRef} className="w-full h-full cursor-grab active:cursor-grabbing" />
+
+      {/* Loading screen — covers the world until the DeLorean GLB is in */}
+      <div
+        className={`fixed inset-0 z-50 flex flex-col items-center justify-center bg-[#05070b] transition-opacity duration-700 ${
+          loading ? 'opacity-100' : 'opacity-0 pointer-events-none'
+        }`}
+      >
+        <div className="px-4 py-1.5 rounded border border-amber-400/40 text-amber-300 font-mono text-[11px] tracking-[0.35em] uppercase">
+          TIME DRIVE · PORTFOLIO
+        </div>
+        <h1 className="mt-5 text-3xl font-extrabold tracking-tight bg-gradient-to-r from-white to-slate-400 bg-clip-text text-transparent">
+          Путешествие во времени загружается
+        </h1>
+        <div className="mt-6 w-64 h-1 rounded-full bg-slate-800 overflow-hidden">
+          <div
+            className="h-full bg-gradient-to-r from-amber-400 to-sky-400 transition-all duration-300"
+            style={{ width: `${Math.max(6, loadPct)}%` }}
+          />
+        </div>
+        <div className="mt-3 font-mono text-[11px] text-slate-500 tracking-widest">
+          {loadPct > 0 ? `LOADING DELOREAN — ${loadPct}%` : 'IGNITING FLUX CAPACITOR…'}
+        </div>
+      </div>
 
       {/* 88 MPH Temporal Flash & Atmospheric Smoke Transition Overlay (Past -> Present) */}
       {telemetry.temporalFlash > 0.02 && (

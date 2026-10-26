@@ -18,6 +18,8 @@ export interface VehicleController {
   currentCar: CarModelId;
   setCarModel: (id: CarModelId) => void;
   setPose: (x: number, z: number, heading?: number, y?: number, pitch?: number) => void;
+  ready: Promise<void>;
+  onProgress?: (fraction: number) => void;
   update: (
     dt: number,
     input: { forward: boolean; backward: boolean; left: boolean; right: boolean; boost: boolean },
@@ -44,7 +46,10 @@ function makeRadialGlowTexture(): THREE.Texture {
   return t;
 }
 
-export function createVehicleController(scene: THREE.Scene): VehicleController {
+export function createVehicleController(
+  scene: THREE.Scene,
+  onProgress?: (fraction: number) => void
+): VehicleController {
   const root = new THREE.Group();
   root.position.set(2.8, 0.0, 315);
   scene.add(root);
@@ -71,6 +76,7 @@ export function createVehicleController(scene: THREE.Scene): VehicleController {
   const cabinMesh = new THREE.Mesh(new THREE.BoxGeometry(2.45, 0.68, 3.2), glassMat);
   cabinMesh.position.set(0, 1.52, -0.2);
   fallbackGroup.add(cabinMesh);
+  fallbackGroup.visible = false; // only shown if the GLB genuinely fails to load
   chassis.add(fallbackGroup);
 
   const glowTex = makeRadialGlowTexture();
@@ -356,6 +362,18 @@ export function createVehicleController(scene: THREE.Scene): VehicleController {
   let activeModelGroup: THREE.Group | null = null;
   let currentCar: CarModelId = 'bttf';
 
+  let resolveReady!: () => void;
+  const ready = new Promise<void>((res) => {
+    resolveReady = res;
+  });
+  let readyDone = false;
+  const markReady = () => {
+    if (!readyDone) {
+      readyDone = true;
+      resolveReady();
+    }
+  };
+
   const applyModel = (id: CarModelId, group: THREE.Group) => {
     if (activeModelGroup) {
       chassis.remove(activeModelGroup);
@@ -423,10 +441,14 @@ export function createVehicleController(scene: THREE.Scene): VehicleController {
         if (currentCar === id) {
           applyModel(id, wrapper);
         }
+        markReady();
       },
-      undefined,
+      (ev) => {
+        if (onProgress && ev.total > 0) onProgress(Math.min(1, ev.loaded / ev.total));
+      },
       () => {
         fallbackGroup.visible = true;
+        markReady();
       }
     );
   };
@@ -462,6 +484,7 @@ export function createVehicleController(scene: THREE.Scene): VehicleController {
     get currentCar() {
       return currentCar;
     },
+    ready,
     setCarModel: (id: CarModelId) => {
       currentCar = id;
       loadCarModel(id);

@@ -205,8 +205,13 @@ export class WorldSceneEngine {
   private disposed = false;
 
   private onTelemetry?: (t: WorldTelemetry) => void;
+  public readonly ready: Promise<void>;
 
-  constructor(container: HTMLElement, onTelemetry?: (t: WorldTelemetry) => void) {
+  constructor(
+    container: HTMLElement,
+    onTelemetry?: (t: WorldTelemetry) => void,
+    onProgress?: (fraction: number) => void
+  ) {
     this.container = container;
     this.onTelemetry = onTelemetry;
 
@@ -263,7 +268,8 @@ export class WorldSceneEngine {
       this.dynamicLightPool.push(pl);
     }
 
-    this.vehicle = createVehicleController(this.scene);
+    this.vehicle = createVehicleController(this.scene, onProgress);
+    this.ready = this.vehicle.ready;
 
     // Cheap planar reflection: sprites, particles & micro-props stay on layer 1
     // (main camera sees them, reflection camera does not).
