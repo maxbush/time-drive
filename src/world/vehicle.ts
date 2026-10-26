@@ -87,11 +87,11 @@ export function createVehicleController(scene: THREE.Scene): VehicleController {
     return s;
   };
 
-  // Dual real headlights: wide soft cool-white beams pooling on asphalt ahead
+  // Dual headlights — asphalt-ref tuning: very wide soft wash, mounted low
   const mkHeadlight = (x: number) => {
-    const spot = new THREE.SpotLight('#e6efff', 42, 62, 0.3, 0.75, 1.5);
-    spot.position.set(x, 1.05, -3.55);
-    spot.target.position.set(x * 1.6, -0.4, -30);
+    const spot = new THREE.SpotLight('#eef5ff', 18, 48, Math.PI / 6.2, 0.58, 1.25);
+    spot.position.set(x, 0.62, -3.55);
+    spot.target.position.set(x * 0.85, 0.04, -26);
     root.add(spot);
     root.add(spot.target);
     return spot;
@@ -153,9 +153,50 @@ export function createVehicleController(scene: THREE.Scene): VehicleController {
   tailMatL.position.set(-0.95, 1.28, 3.62);
   tailMatR.position.set(0.95, 1.28, 3.62);
   root.add(tailMatL, tailMatR);
-  const tailLight = new THREE.PointLight('#ff2c14', 3.5, 11, 1.8);
+  const tailLight = new THREE.PointLight('#ff2c14', 2.2, 9, 1.8);
   tailLight.position.set(0, 1.3, 3.85);
   root.add(tailLight);
+
+  // Soft red pool spilled onto the asphalt behind the car (asphalt-ref trick)
+  const spillCanvas = document.createElement('canvas');
+  spillCanvas.width = 128;
+  spillCanvas.height = 128;
+  const sctx = spillCanvas.getContext('2d')!;
+  const sgrad = sctx.createRadialGradient(64, 64, 4, 64, 64, 60);
+  sgrad.addColorStop(0, 'rgba(220, 38, 38, 0.5)');
+  sgrad.addColorStop(0.55, 'rgba(220, 38, 38, 0.16)');
+  sgrad.addColorStop(1, 'rgba(220, 38, 38, 0)');
+  sctx.fillStyle = sgrad;
+  sctx.fillRect(0, 0, 128, 128);
+  const spillTex = new THREE.CanvasTexture(spillCanvas);
+  const rearSpillMat = new THREE.MeshBasicMaterial({
+    map: spillTex,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    opacity: 0.55,
+    polygonOffset: true,
+    polygonOffsetFactor: -4,
+  });
+  const rearSpill = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 2.8), rearSpillMat);
+  rearSpill.rotation.x = -Math.PI / 2;
+  rearSpill.position.set(0, 0.03, 4.4);
+  rearSpill.layers.set(1);
+  root.add(rearSpill);
+
+  // 88-MPH blue underglow (bridge-ref) — fades in on flash/boost/launch
+  const underglowMat = new THREE.MeshBasicMaterial({
+    color: new THREE.Color(0.25, 0.6, 2.4),
+    transparent: true,
+    opacity: 0,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+  const underglow = new THREE.Mesh(new THREE.PlaneGeometry(5.2, 2.6), underglowMat);
+  underglow.rotation.x = -Math.PI / 2;
+  underglow.position.y = 0.05;
+  underglow.layers.set(1);
+  root.add(underglow);
 
   // Exhaust / time-jump flame trail particle pool (BTTF fire trails)
   const P_COUNT = 240;
@@ -518,7 +559,8 @@ export function createVehicleController(scene: THREE.Scene): VehicleController {
       const tailHot = 0.5 + brakeGlow * 0.5 + (pitchAngle > 0.05 ? 0.35 : 0);
       (tailMatL.material as THREE.SpriteMaterial).opacity = Math.min(1, tailHot);
       (tailMatR.material as THREE.SpriteMaterial).opacity = Math.min(1, tailHot);
-      tailLight.intensity = 3.5 + brakeGlow * 18 + (pitchAngle > 0.05 ? 6 : 0);
+      tailLight.intensity = 2.2 + brakeGlow * 9 + (pitchAngle > 0.05 ? 4 : 0);
+      rearSpillMat.opacity = 0.35 + brakeGlow * 0.45 + (pitchAngle > 0.05 ? 0.3 : 0);
       prevSpeed = speed;
 
       // --- Headlight dynamics: subtle boost surge + beam flicker ---------------
@@ -537,6 +579,13 @@ export function createVehicleController(scene: THREE.Scene): VehicleController {
       const flightFactor = THREE.MathUtils.clamp(pitchAngle / 1.2, 0, 1);
       const boosting = input.boost && Math.abs(speed) > 28;
       const emitting = flightFactor > 0.02 || boosting || flashBoost > 0.25;
+
+      // 88-MPH underglow breathes with the same emit state
+      underglowMat.opacity = THREE.MathUtils.lerp(
+        underglowMat.opacity,
+        emitting ? 0.55 + Math.sin(exhaustTime * 21) * 0.1 : 0,
+        1 - Math.exp(-6 * dt)
+      );
 
       carVel.copy(root.position).sub(prevPos).divideScalar(Math.max(dt, 0.001));
       prevPos.copy(root.position);
