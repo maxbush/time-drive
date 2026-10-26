@@ -193,16 +193,14 @@ export default function App() {
       <div
         ref={flashRef}
         className="fixed inset-0 z-10 pointer-events-none"
-        style={{
-          opacity: 0,
-          background:
-            'radial-gradient(circle at 50% 50%, rgba(224,242,254,0.92) 0%, rgba(56,189,248,0.58) 38%, rgba(15,23,42,0.85) 85%)',
-        }}
+        style={{ opacity: 0 }}
       >
+        {/* The white-out itself is rendered in the WebGL post pass (so it blooms);
+            this layer only carries the caption, dark on the white flash. */}
         <div className="w-full h-full flex flex-col items-center justify-center">
           <div
             ref={flashLabelRef}
-            className="px-4 py-1.5 rounded-full bg-sky-500/20 border border-sky-300/60 text-sky-100 font-mono text-xs tracking-[0.3em] uppercase shadow-[0_0_40px_rgba(56,189,248,0.8)]"
+            className="px-4 py-1.5 rounded-full bg-white/30 border border-slate-900/40 text-slate-900 font-mono text-xs tracking-[0.3em] uppercase"
           >
             88 MPH // TEMPORAL JUMP
           </div>

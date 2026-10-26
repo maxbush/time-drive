@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 
 export type CarModelId = 'bttf';
 
@@ -18,11 +19,14 @@ export interface VehicleController {
   setCarModel: (id: CarModelId) => void;
   setPose: (x: number, z: number, heading?: number, y?: number, pitch?: number) => void;
   ready: Promise<void>;
+  /** 0..1 glow around the car (blue underglow + aura) used by the transitions. */
+  setFx: (v: number) => void;
   update: (
     dt: number,
     input: { forward: boolean; backward: boolean; left: boolean; right: boolean; boost: boolean },
     autoCruise: boolean,
-    stationSlowdownFactor: number
+    stationSlowdownFactor: number,
+    cruiseBoost?: number
   ) => void;
 }
 
@@ -43,10 +47,156 @@ function makeRadialGlowTexture(): THREE.Texture {
   return t;
 }
 
+// Speed (units/s) the car reaches during the space launch. Keep in sync with
+// TRANSITION_TUNING.launch.maxSpeed in transitions.ts (used to scale FX).
+const LAUNCH_SPEED = 95;
+// Auto-cruise speed inside the Ribbed Gate (boosted fly-through), units/s.
+const GATE_SPEED = 44;
+
+interface LampCluster {
+  x: number;
+  y: number;
+  zFront: number; // most-forward (most negative) z of the cluster
+  zBack: number; // most-rearward (most positive) z of the cluster
+  w: number;
+  h: number;
+  n: number;
+}
+
+// Finds lamp lenses from the model's own emissive-lamp mesh: collects its
+// vertices in the car's local space, keeps the ones in the front (or rear) half
+// and groups them into per-lamp clusters. Robust to the GLB's baked transforms.
+function findLamps(model: THREE.Object3D, rear: boolean): LampCluster[] {
+  model.updateMatrixWorld(true);
+  const v = new THREE.Vector3();
+  const pts: THREE.Vector3[] = [];
+  model.traverse((o) => {
+    if (!(o instanceof THREE.Mesh)) return;
+    const mats = Array.isArray(o.material) ? o.material : [o.material];
+    if (!mats.some((m) => m && m.name && m.name.includes('LightEmissive'))) return;
+    const pos = o.geometry.attributes.position;
+    for (let i = 0; i < pos.count; i++) {
+      v.fromBufferAttribute(pos, i).applyMatrix4(o.matrixWorld);
+      if (rear ? v.z > 1.5 : v.z < -1.5) pts.push(v.clone());
+    }
+  });
+
+  interface Acc { sx: number; sy: number; n: number; minX: number; maxX: number; minY: number; maxY: number; minZ: number; maxZ: number }
+  const clusters: Acc[] = [];
+  for (const p of pts) {
+    let c = clusters.find((k) => Math.abs(k.sx / k.n - p.x) < 0.14 && Math.abs(k.sy / k.n - p.y) < 0.14);
+    if (!c) {
+      c = { sx: 0, sy: 0, n: 0, minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity, minZ: Infinity, maxZ: -Infinity };
+      clusters.push(c);
+    }
+    c.sx += p.x;
+    c.sy += p.y;
+    c.n++;
+    c.minX = Math.min(c.minX, p.x);
+    c.maxX = Math.max(c.maxX, p.x);
+    c.minY = Math.min(c.minY, p.y);
+    c.maxY = Math.max(c.maxY, p.y);
+    c.minZ = Math.min(c.minZ, p.z);
+    c.maxZ = Math.max(c.maxZ, p.z);
+  }
+  return clusters.map((c) => ({
+    x: c.sx / c.n,
+    y: c.sy / c.n,
+    zFront: c.minZ,
+    zBack: c.maxZ,
+    w: c.maxX - c.minX,
+    h: c.maxY - c.minY,
+    n: c.n,
+  }));
+}
+
+// Splits a mesh that contains all four wheels into one mesh per wheel, assigning
+// each triangle to the quadrant (left/right x front/rear) of its world centroid.
+// Attributes are copied as plain floats (the GLB is meshopt/quantised), the new
+// meshes keep the original's transform, material and flags, and replace it.
+function splitByWheel(src: THREE.Mesh, carCenter: THREE.Vector3): THREE.Mesh[] {
+  const g = src.geometry as THREE.BufferGeometry;
+  const pos = g.attributes.position;
+  const nor = g.attributes.normal;
+  const uv = g.attributes.uv;
+  const index = g.index;
+  const triCount = (index ? index.count : pos.count) / 3;
+  src.updateWorldMatrix(true, false);
+
+  const groups: number[][] = [[], [], [], []];
+  const v = new THREE.Vector3();
+  const c = new THREE.Vector3();
+  for (let t = 0; t < triCount; t++) {
+    const ids = index
+      ? [index.getX(t * 3), index.getX(t * 3 + 1), index.getX(t * 3 + 2)]
+      : [t * 3, t * 3 + 1, t * 3 + 2];
+    c.set(0, 0, 0);
+    for (const i of ids) c.add(v.fromBufferAttribute(pos, i).applyMatrix4(src.matrixWorld));
+    c.multiplyScalar(1 / 3);
+    groups[(c.x < carCenter.x ? 0 : 1) + (c.z < carCenter.z ? 0 : 2)].push(ids[0], ids[1], ids[2]);
+  }
+
+  const out: THREE.Mesh[] = [];
+  const parent = src.parent!;
+  for (const tri of groups) {
+    if (!tri.length) continue;
+    const remap = new Map<number, number>();
+    const p: number[] = [];
+    const n: number[] = [];
+    const u: number[] = [];
+    const idx: number[] = [];
+    for (const i of tri) {
+      let k = remap.get(i);
+      if (k === undefined) {
+        k = remap.size;
+        remap.set(i, k);
+        p.push(pos.getX(i), pos.getY(i), pos.getZ(i));
+        if (nor) n.push(nor.getX(i), nor.getY(i), nor.getZ(i));
+        if (uv) u.push(uv.getX(i), uv.getY(i));
+      }
+      idx.push(k);
+    }
+    const ng = new THREE.BufferGeometry();
+    ng.setAttribute('position', new THREE.Float32BufferAttribute(p, 3));
+    if (nor) ng.setAttribute('normal', new THREE.Float32BufferAttribute(n, 3));
+    if (uv) ng.setAttribute('uv', new THREE.Float32BufferAttribute(u, 2));
+    ng.setIndex(idx);
+    const m = new THREE.Mesh(ng, src.material);
+    m.position.copy(src.position);
+    m.quaternion.copy(src.quaternion);
+    m.scale.copy(src.scale);
+    m.castShadow = src.castShadow;
+    m.receiveShadow = src.receiveShadow;
+    m.layers.mask = src.layers.mask;
+    m.renderOrder = src.renderOrder;
+    m.name = src.name + '_wheel' + out.length;
+    parent.add(m);
+    out.push(m);
+  }
+  parent.remove(src);
+  g.dispose();
+  return out;
+}
+
+// Reflection brightness of the studio environment on the car body. The city env
+// is a dark dusk sky, so brushed steel read as dark grey; the studio env gives it
+// long soft highlights like a car commercial. Raise for a brighter, more silver car.
+const CAR_ENV_INTENSITY = 0.78;
+
 export function createVehicleController(
   scene: THREE.Scene,
-  onProgress?: (fraction: number) => void
+  onProgress?: (fraction: number) => void,
+  renderer?: THREE.WebGLRenderer
 ): VehicleController {
+  // One-off PMREM of a soft-box studio, used ONLY by the car's materials (the
+  // city keeps its dusk look). No per-frame cost, no extra lights.
+  let carEnv: THREE.Texture | null = null;
+  if (renderer) {
+    const pm = new THREE.PMREMGenerator(renderer);
+    carEnv = pm.fromScene(new RoomEnvironment(), 0.04).texture;
+    pm.dispose();
+  }
+
   const root = new THREE.Group();
   root.position.set(2.8, 0.0, 315);
   scene.add(root);
@@ -101,20 +251,239 @@ export function createVehicleController(
   const headL = mkHeadlight(-0.85);
   const headR = mkHeadlight(0.85);
 
-  const headGlowL = lampSprite('#fff3d9', 0.5);
-  headGlowL.position.set(-0.84, 1.0, -3.8);
-  (headGlowL.material as THREE.SpriteMaterial).opacity = 0.55;
-  const headGlowR = lampSprite('#fff3d9', 0.5);
-  headGlowR.position.set(0.84, 1.0, -3.8);
-  (headGlowR.material as THREE.SpriteMaterial).opacity = 0.55;
-  root.add(headGlowL, headGlowR);
+  // Headlamp halos are created after the GLB loads, at the REAL lamp positions
+  // (found from the model's LightEmissive mesh) — see setupHeadlamps().
+  const _lampWorld = new THREE.Vector3();
+  const _lampFwd = new THREE.Vector3();
+  const _lampToCam = new THREE.Vector3();
+  const setupHeadlamps = (lamps: LampCluster[]) => {
+    // The emissive mesh holds a lot more than headlamps: bumper-level strips/lights
+    // (y~0.83), grille strips, corner markers (|x|>1). The real headlamps are the
+    // upper row of rectangular lamps in the nose pods — two per side, recessed
+    // behind the bumper lip (y~1.07, z~-3.35) — so take the topmost row inboard
+    // of the corner markers.
+    const cand = lamps.filter((c) => c.n >= 12 && Math.abs(c.x) < 1.0);
+    if (!cand.length) return;
+    const topY = Math.max(...cand.map((c) => c.y));
+    const front = cand.filter((c) => c.y > topY - 0.1);
+
+    // One spotlight per side, emitted just in front of that side's lamp group.
+    for (const side of [-1, 1] as const) {
+      const grp = front.filter((c) => Math.sign(c.x) === side);
+      if (!grp.length) continue;
+      const mx = grp.reduce((a, c) => a + c.x, 0) / grp.length;
+      const my = grp.reduce((a, c) => a + c.y, 0) / grp.length;
+      const mz = Math.min(...grp.map((c) => c.zFront));
+      const spot = side < 0 ? headL : headR;
+      spot.position.set(mx, my, mz - 0.25);
+      spot.target.position.set(mx * 1.8, -0.5, -27);
+    }
+
+    // Soft halo per lamp. Sits a hair in front of the lens and fades out when the
+    // camera is beside/behind the car, so it never reads as a floating blob.
+    // The emissive reflectors sit ~0.2 m BEHIND the visible lens plane (recessed in
+    // the nose pod), so a halo placed on them looks shifted inward from an angle.
+    // Put it on the lens plane instead, and skip the depth test (small, only seen
+    // from the front) so the nose can't clip it into a hard edge.
+    // Currently OFF by decision (didn't look right enough); flip to true to re-test.
+    const HEADLAMP_HALOS = false;
+    for (const c of HEADLAMP_HALOS ? front : []) {
+      const size = THREE.MathUtils.clamp(Math.max(c.w, c.h) * 2.0, 0.26, 0.4);
+      const halo = lampSprite('#fff1d6', size);
+      const mat = halo.material as THREE.SpriteMaterial;
+      const baseOpacity = 0.45;
+      mat.opacity = baseOpacity;
+      mat.depthTest = false;
+      halo.renderOrder = 5;
+      halo.position.set(c.x, c.y, c.zFront - 0.2);
+      halo.layers.set(1);
+      halo.onBeforeRender = (_r, _s, camera) => {
+        halo.getWorldPosition(_lampWorld);
+        chassis.getWorldDirection(_lampFwd).negate(); // car front is local -Z
+        _lampToCam.copy(camera.position).sub(_lampWorld).normalize();
+        const facing = _lampFwd.dot(_lampToCam);
+        mat.opacity = baseOpacity * THREE.MathUtils.smoothstep(facing, 0.15, 0.7);
+      };
+      chassis.add(halo);
+    }
+
+    if (new URLSearchParams(window.location.search).has('debug')) {
+      console.info('[headlamps] ' + JSON.stringify(front.map((c) => ({ x: +c.x.toFixed(2), y: +c.y.toFixed(2), z: +c.zFront.toFixed(2), w: +c.w.toFixed(2), h: +c.h.toFixed(2), n: c.n }))));
+    }
+  };
 
   // Taillights: full-width rear glow + brake dynamics
-  const tailMatL = lampSprite('#ff3822', 1.15);
-  const tailMatR = lampSprite('#ff3822', 1.15);
-  tailMatL.position.set(-0.95, 1.28, 3.62);
-  tailMatR.position.set(0.95, 1.28, 3.62);
+  // Placed on the real tail-lamp grids once the GLB is measured (setupTaillamps).
+  // The old fixed spot floated ~0.3 m above/behind the lamps and showed up as a
+  // red cloud beside the car from the 3/4 camera.
+  const tailMatL = lampSprite('#ff3822', 0.8);
+  const tailMatR = lampSprite('#ff3822', 0.8);
+  tailMatL.position.set(-0.8, 0.95, 3.62);
+  tailMatR.position.set(0.8, 0.95, 3.62);
   root.add(tailMatL, tailMatR);
+  let tailBase = 0.5; // brake/launch driven brightness, set every frame in update()
+
+  const setupTaillamps = (lamps: LampCluster[]) => {
+    // The emissive mesh also holds inner louver strips and bumper reflectors; averaging
+    // everything pulled the halo inboard and ~0.3 m below the lit grids. Use only the
+    // big lamp-grid clusters (the visibly glowing ones), one small halo each.
+    const rear = lamps.filter((c) => c.n >= 100 && Math.abs(c.x) < 1.2 && c.y > 1.0);
+    if (!rear.length) return;
+    root.remove(tailMatL, tailMatR); // drop the placeholder pair
+    for (const c of rear) {
+      const spr = lampSprite('#ff3822', THREE.MathUtils.clamp(Math.max(c.w, c.h) * 2.0, 0.3, 0.55));
+      spr.position.set(c.x, c.y, c.zBack + 0.05);
+      spr.layers.set(1);
+      chassis.add(spr); // follows the body's pitch/roll
+      const mat = spr.material as THREE.SpriteMaterial;
+      // A camera-facing quad half-buried in the sloped rear panel gets depth-clipped
+      // by the body and leaves a hard red diagonal line across the bumper. The halo
+      // is small and only shown from behind, so skip the depth test entirely.
+      mat.depthTest = false;
+      spr.renderOrder = 5;
+      // Visible only from behind: fades out as the camera swings to the front/side.
+      spr.onBeforeRender = (_r, _s, camera) => {
+        spr.getWorldPosition(_lampWorld);
+        chassis.getWorldDirection(_lampFwd); // local +Z = the car's back
+        _lampToCam.copy(camera.position).sub(_lampWorld).normalize();
+        mat.opacity = tailBase * THREE.MathUtils.smoothstep(_lampFwd.dot(_lampToCam), 0.05, 0.55);
+      };
+    }
+    if (new URLSearchParams(window.location.search).has('debug')) {
+      console.info('[taillamps] ' + JSON.stringify(rear.map((c) => ({ x: +c.x.toFixed(2), y: +c.y.toFixed(2), z: +c.zBack.toFixed(2), w: +c.w.toFixed(2), h: +c.h.toFixed(2), n: c.n }))));
+    }
+  };
+
+  // Flux glow for the transitions: a blue underglow plane + a soft aura around the
+  // car. Both always exist (opacity 0 when idle) so their shaders compile with
+  // everything else at load instead of mid-jump. HDR colours -> they bloom.
+  const underGeo = new THREE.PlaneGeometry(4.2, 9.0);
+  underGeo.rotateX(-Math.PI / 2);
+  const underMat = new THREE.MeshBasicMaterial({
+    map: glowTex,
+    color: new THREE.Color(0.35, 0.9, 2.6),
+    transparent: true,
+    opacity: 0,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    fog: false,
+  });
+  const underGlow = new THREE.Mesh(underGeo, underMat);
+  // 0.12 clears the road crown (0.065) and the lane paint, so it isn't buried.
+  underGlow.position.y = 0.12;
+  underGlow.layers.set(1);
+  root.add(underGlow);
+
+  const auraSprite = lampSprite('#8cc4ff', 11);
+  const auraMat = auraSprite.material as THREE.SpriteMaterial;
+  auraSprite.position.set(0, 1.1, 0.4);
+  auraMat.opacity = 0;
+  auraSprite.layers.set(1);
+  root.add(auraSprite);
+  let fxLevel = 0;
+
+  // Soft contact shadow under the car: the shadow map is coarse (15 cm texels) so
+  // without this the car looks like it hovers. One transparent quad, no cost.
+  const csCanvas = document.createElement('canvas');
+  csCanvas.width = csCanvas.height = 128;
+  const csCtx = csCanvas.getContext('2d')!;
+  const csGrad = csCtx.createRadialGradient(64, 64, 6, 64, 64, 64);
+  csGrad.addColorStop(0, 'rgba(0,0,0,0.85)');
+  csGrad.addColorStop(0.55, 'rgba(0,0,0,0.35)');
+  csGrad.addColorStop(1, 'rgba(0,0,0,0)');
+  csCtx.fillStyle = csGrad;
+  csCtx.fillRect(0, 0, 128, 128);
+  const csGeo = new THREE.PlaneGeometry(3.6, 7.6);
+  csGeo.rotateX(-Math.PI / 2);
+  const csMat = new THREE.MeshBasicMaterial({
+    map: new THREE.CanvasTexture(csCanvas),
+    transparent: true,
+    opacity: 0.55,
+    depthWrite: false,
+    fog: false,
+  });
+  const contactShadow = new THREE.Mesh(csGeo, csMat);
+  contactShadow.position.y = 0.085; // above the road crown (0.065)
+  contactShadow.layers.set(1);
+  root.add(contactShadow);
+
+  // Electric arcs crawling over the body during the transitions. Thin HDR lines
+  // (bloom turns them into a glow), re-rolled every 40-140 ms so they crackle.
+  // Always rendered (opacity 0 / collapsed when idle) so the shader compiles at load.
+  const ARC_COUNT = 9;
+  const ARC_SEG = 12;
+  const arcPos = new Float32Array(ARC_COUNT * ARC_SEG * 2 * 3);
+  const arcGeo = new THREE.BufferGeometry();
+  const arcAttr = new THREE.BufferAttribute(arcPos, 3);
+  arcGeo.setAttribute('position', arcAttr);
+  const arcMat = new THREE.LineBasicMaterial({
+    color: new THREE.Color(1.3, 2.4, 4.2),
+    transparent: true,
+    opacity: 0,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    fog: false,
+  });
+  // Two copies, a hair apart: WebGL lines are 1px, this makes them read ~2px.
+  for (const off of [0, 0.014]) {
+    const l = new THREE.LineSegments(arcGeo, arcMat);
+    l.position.set(off, off * 0.7, 0);
+    l.frustumCulled = false;
+    l.layers.set(1);
+    chassis.add(l);
+  }
+  const arcLife = new Float32Array(ARC_COUNT).fill(-1);
+  const arcPts: number[] = new Array((ARC_SEG + 1) * 3).fill(0);
+  const rnd = (a: number, b: number) => a + Math.random() * (b - a);
+
+  const rollArc = (i: number) => {
+    let ax: number, ay: number, az: number, bx: number, by: number, bz: number;
+    const r = Math.random();
+    if (r < 0.4) {
+      // across the rear panel (the part the chase camera actually sees)
+      az = bz = 3.5;
+      ax = rnd(-0.95, 0.95);
+      bx = rnd(-0.95, 0.95);
+      ay = rnd(0.35, 1.15);
+      by = rnd(0.35, 1.15);
+    } else if (r < 0.7) {
+      // along the roof / hood
+      ax = bx = rnd(-0.7, 0.7);
+      ay = by = rnd(1.0, 1.25);
+      az = rnd(-3.3, 0.2);
+      bz = az + rnd(1.5, 3.5);
+    } else {
+      // from the body side down to the road
+      const side = Math.random() < 0.5 ? -1 : 1;
+      ax = side * 1.0;
+      ay = rnd(0.5, 1.0);
+      az = rnd(-2.5, 2.5);
+      bx = side * rnd(1.15, 1.55);
+      by = 0.08;
+      bz = az + rnd(-0.6, 0.6);
+    }
+    const len = Math.hypot(bx - ax, by - ay, bz - az);
+    const jit = 0.05 + len * 0.045;
+    for (let k = 0; k <= ARC_SEG; k++) {
+      const t = k / ARC_SEG;
+      const edge = k === 0 || k === ARC_SEG ? 0 : Math.sin(Math.PI * t);
+      arcPts[k * 3] = ax + (bx - ax) * t + rnd(-jit, jit) * edge;
+      arcPts[k * 3 + 1] = ay + (by - ay) * t + rnd(-jit, jit) * edge;
+      arcPts[k * 3 + 2] = az + (bz - az) * t + rnd(-jit, jit) * edge;
+    }
+    for (let k = 0; k < ARC_SEG; k++) {
+      const o = (i * ARC_SEG + k) * 6;
+      arcPos[o] = arcPts[k * 3];
+      arcPos[o + 1] = arcPts[k * 3 + 1];
+      arcPos[o + 2] = arcPts[k * 3 + 2];
+      arcPos[o + 3] = arcPts[k * 3 + 3];
+      arcPos[o + 4] = arcPts[k * 3 + 4];
+      arcPos[o + 5] = arcPts[k * 3 + 5];
+    }
+  };
+  const clearArc = (i: number) => {
+    arcPos.fill(0, i * ARC_SEG * 6, (i + 1) * ARC_SEG * 6);
+  };
 
   // (no fake lens discs — the GLB's own LightEmissive lamps are driven instead)
 
@@ -147,6 +516,9 @@ export function createVehicleController(
     chassis.add(group);
     currentCar = id;
     setupWheelPivots(group);
+    if (new URLSearchParams(window.location.search).has('debug')) {
+      console.info('[wheels] pivots=' + wheelPivots.length);
+    }
   };
 
   // Wheels have baked transforms in these Sketchfab GLBs — detect them by
@@ -160,11 +532,28 @@ export function createVehicleController(
     const carC = carBox.getCenter(new THREE.Vector3());
     const wheelMeshes: { mesh: THREE.Mesh; c: THREE.Vector3; r: number }[] = [];
     const meshes: { mesh: THREE.Mesh; b: THREE.Box3 }[] = [];
+
+    // This GLB bakes all four wheels (tyre + rim) into ONE mesh, so the corner
+    // search below finds nothing and the wheels never turned. Split that mesh into
+    // four per-wheel meshes by triangle position first.
+    let wheelSrc: THREE.Mesh | null = null;
+    group.traverse((o) => {
+      if (o instanceof THREE.Mesh && !wheelSrc) {
+        const mats = Array.isArray(o.material) ? o.material : [o.material];
+        if (mats.some((m) => m && /wheel/i.test(m.name ?? ''))) wheelSrc = o;
+      }
+    });
+    if (wheelSrc) {
+      for (const m of splitByWheel(wheelSrc, carC)) {
+        const b = new THREE.Box3().setFromObject(m);
+        wheelMeshes.push({ mesh: m, c: b.getCenter(new THREE.Vector3()), r: b.getSize(new THREE.Vector3()).y / 2 });
+      }
+    }
     group.traverse((o) => {
       if (o instanceof THREE.Mesh) meshes.push({ mesh: o, b: new THREE.Box3().setFromObject(o) });
     });
-    // Expected wheel-well positions: four corners just above the ground
-    for (const sx of [-1, 1]) {
+    // Fallback (models with separate wheel meshes): corner search just above the ground
+    for (const sx of wheelMeshes.length ? [] : [-1, 1]) {
       for (const sz of [-1, 1]) {
         const ex = carC.x + sx * carSize.x * 0.36;
         const ez = carC.z + sz * carSize.z * 0.33;
@@ -235,7 +624,12 @@ export function createVehicleController(
               const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
               for (const m of mats) {
                 if (m instanceof THREE.MeshStandardMaterial) {
-                  m.envMapIntensity = 2.4; // stronger env reflections — wet mirror look
+                  if (carEnv) {
+                    m.envMap = carEnv; // studio soft-boxes, car only
+                    m.envMapIntensity = CAR_ENV_INTENSITY;
+                  } else {
+                    m.envMapIntensity = 2.4; // fallback: stronger city-env reflections
+                  }
                   if (m.name === 'orange_glass') {
                     m.emissive.setRGB(0, 0, 0);
                     m.emissiveIntensity = 0;
@@ -270,8 +664,14 @@ export function createVehicleController(
         wrapper.add(model);
         wrapper.rotation.y = (size.x > size.z ? Math.PI / 2 : 0) + Math.PI;
         loadedModels.set(id, wrapper);
+        // Lamp positions are measured while the wrapper is still unparented, so
+        // they come out in the car's own (chassis) space, independent of the pose.
+        const lamps = findLamps(wrapper, false);
+        const rearLamps = findLamps(wrapper, true);
         if (currentCar === id) {
           applyModel(id, wrapper);
+          setupHeadlamps(lamps);
+          setupTaillamps(rearLamps);
         }
         markReady();
       },
@@ -362,6 +762,9 @@ export function createVehicleController(
       return currentCar;
     },
     ready,
+    setFx: (v: number) => {
+      fxLevel = THREE.MathUtils.clamp(v, 0, 1);
+    },
     setCarModel: (id: CarModelId) => {
       currentCar = id;
       loadCarModel(id);
@@ -375,7 +778,7 @@ export function createVehicleController(
       chassis.rotation.set(0, 0, 0);
       root.updateMatrixWorld(true);
     },
-    update: (dt, input, autoCruise, stationSlowdownFactor) => {
+    update: (dt, input, autoCruise, stationSlowdownFactor, cruiseBoost = 0) => {
       exhaustTime += dt;
       const maxSpeed = input.boost ? 56 : 34;
       const accel = input.boost ? 36 : 22;
@@ -385,9 +788,20 @@ export function createVehicleController(
       } else if (input.backward) {
         speed = THREE.MathUtils.lerp(speed, -18, 1 - Math.exp(-18 * 0.12 * dt));
       } else if (autoCruise) {
-        // In auto-cruise, smoothly slow down when approaching a project station (`stationSlowdownFactor` 0..1)
-        const targetCruise = THREE.MathUtils.lerp(28, 0, stationSlowdownFactor);
-        speed = THREE.MathUtils.lerp(speed, targetCruise, 1 - Math.exp(-4.2 * dt));
+        const launching = root.position.z <= -442 || root.position.y > 0.5;
+        if (launching) {
+          // Rocket burst up through the ring, then a hard brake into calm weightlessness
+          // once the contact card opens (stationSlowdownFactor ramps to 0.72 there).
+          const calm = THREE.MathUtils.clamp(stationSlowdownFactor / 0.72, 0, 1);
+          const targetLaunch = THREE.MathUtils.lerp(LAUNCH_SPEED, 6, calm);
+          speed = THREE.MathUtils.lerp(speed, targetLaunch, 1 - Math.exp(-(calm > 0 ? 3.2 : 1.7) * dt));
+        } else {
+          // In auto-cruise, smoothly slow down when approaching a project station (`stationSlowdownFactor` 0..1)
+          const cruise = THREE.MathUtils.lerp(28, GATE_SPEED, cruiseBoost);
+          const targetCruise = THREE.MathUtils.lerp(cruise, 0, stationSlowdownFactor);
+          // Gentle rate while the boost is on/easing out: no hard braking at the exit.
+          speed = THREE.MathUtils.lerp(speed, targetCruise, 1 - Math.exp(-(cruiseBoost > 0 ? 2.0 : 4.2) * dt));
+        }
       } else {
         speed = THREE.MathUtils.lerp(speed, 0, 1 - Math.exp(-4.5 * dt));
         if (Math.abs(speed) < 0.08) speed = 0;
@@ -412,13 +826,15 @@ export function createVehicleController(
           // Smoothly rotate pitch up to 90 degrees (+Math.PI / 2) and ascend into the cosmos!
           const launchProgress = THREE.MathUtils.clamp((-442 - root.position.z) / 22 + root.position.y / 35, 0, 1);
           const targetPitch = launchProgress * (Math.PI * 0.48); // ~86-90 degrees vertical climb!
-          pitchAngle = THREE.MathUtils.lerp(pitchAngle, targetPitch, 1 - Math.exp(-3.5 * dt));
+          // Snappy pitch-up (was 3.5/s, felt too smooth) — the flash + hit-stop sell it
+          pitchAngle = THREE.MathUtils.lerp(pitchAngle, targetPitch, 1 - Math.exp(-6.5 * dt));
 
           const forwardHoriz = Math.cos(pitchAngle) * speed;
           const climbVert = Math.sin(pitchAngle) * speed;
 
           root.position.z -= forwardHoriz * dt;
-          root.position.y = Math.min(220, root.position.y + climbVert * dt);
+          // Ceiling raised 220 -> 520: the rocket flight now lasts ~4s before the card.
+          root.position.y = Math.min(520, root.position.y + climbVert * dt);
           root.position.x = THREE.MathUtils.lerp(root.position.x, 0, 1 - Math.exp(-3 * dt));
         } else {
           // Reversing back down to road
@@ -455,8 +871,12 @@ export function createVehicleController(
       const braking = (decel > 4.5 && prevSpeed > 0.5) || (input.backward && speed > 1.5);
       brakeGlow = THREE.MathUtils.lerp(brakeGlow, braking ? 1 : 0, 1 - Math.exp(-9 * dt));
       const tailHot = 0.5 + brakeGlow * 0.5 + (pitchAngle > 0.05 ? 0.35 : 0);
-      (tailMatL.material as THREE.SpriteMaterial).opacity = Math.min(1, tailHot);
-      (tailMatR.material as THREE.SpriteMaterial).opacity = Math.min(1, tailHot);
+      tailBase = Math.min(1, tailHot);
+      // (until the lamps are measured, the sprites use this directly)
+      if (!tailMatL.onBeforeRender || tailMatL.parent === root) {
+        (tailMatL.material as THREE.SpriteMaterial).opacity = tailBase;
+        (tailMatR.material as THREE.SpriteMaterial).opacity = tailBase;
+      }
       prevSpeed = speed;
 
       // --- Headlight dynamics: subtle boost surge + beam flicker ---------------
@@ -467,10 +887,41 @@ export function createVehicleController(
       headL.target.updateMatrixWorld();
       headR.target.updateMatrixWorld();
 
+      // Transition glow (blue underglow + aura), with a fast electric flicker
+      const fxPulse = 0.86 + 0.14 * Math.sin(exhaustTime * 38) * Math.sin(exhaustTime * 11.7);
+      underMat.opacity = fxLevel * 0.95 * fxPulse;
+      auraMat.opacity = fxLevel * 0.4 * fxPulse;
+      // contact shadow only while the car is actually on the road
+      csMat.opacity = 0.55 * THREE.MathUtils.clamp(1 - pitchAngle * 6, 0, 1) * THREE.MathUtils.clamp(1 - root.position.y / 1.5, 0, 1);
+
+      // Electric arcs: more of them as the glow level rises, none when idle
+      const arcsActive = fxLevel > 0.2 ? Math.round(ARC_COUNT * Math.min(1, (fxLevel - 0.2) / 0.7)) : 0;
+      let arcsChanged = false;
+      for (let i = 0; i < ARC_COUNT; i++) {
+        if (i >= arcsActive) {
+          if (arcLife[i] > -1) {
+            clearArc(i);
+            arcLife[i] = -1;
+            arcsChanged = true;
+          }
+          continue;
+        }
+        arcLife[i] -= dt;
+        if (arcLife[i] <= 0) {
+          rollArc(i);
+          arcLife[i] = rnd(0.04, 0.14);
+          arcsChanged = true;
+        }
+      }
+      if (arcsChanged) arcAttr.needsUpdate = true;
+      arcMat.opacity = arcsActive > 0 ? Math.min(1, fxLevel * 1.4) * (0.75 + 0.25 * Math.random()) : 0;
+
       // Wheel spin — re-pivoted hubs rotate about the car's lateral axis
       if (wheelPivots.length && Math.abs(speed) > 0.05) {
+        // airborne (rocket launch): wheels free-spin slowly instead of strobing
+        const grip = root.position.y > 0.6 ? 0.2 : 1;
         for (const { pivot, r } of wheelPivots) {
-          pivot.rotateOnAxis(pivot.userData.ax, (-speed * dt) / r);
+          pivot.rotateOnAxis(pivot.userData.ax, (-speed * grip * dt) / r);
         }
       }
 

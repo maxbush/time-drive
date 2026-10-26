@@ -4,6 +4,9 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { SMAAPass } from 'three/examples/jsm/postprocessing/SMAAPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+import type { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
+import { TransitionDirector, createTransitionPass, TRANSITION_TUNING } from './transitions';
+import { createFireTrails, FireTrails } from './fireTrails';
 import { createTextureLibrary } from './textures';
 import { createMaterialPalette } from './materials';
 import { createEnvironment, EnvironmentSystem } from './environment';
@@ -49,7 +52,7 @@ export const WORLD_ZONES: WorldZonePreset[] = [
     label: '02 · 88 MPH Time Vault',
     era: 'TRANSITION // TEMPORAL JUMP',
     subtitle: 'Crossed-Out Past Sign · 30 Catenary Formwork Ribs · Flash & Smoke Transition',
-    z: 122,
+    z: 146, // before the jump now starts (crossed-out sign / crosswalk is at ~z 112-120)
     x: 2.8,
     camYaw: 0.0,
     camPitch: 0.12,
@@ -107,11 +110,35 @@ export const WORLD_ZONES: WorldZonePreset[] = [
   },
 ];
 
+// Chase camera look (all in one place). side = metres to the car's right,
+// lookShift = how much of that offset the aim point follows (0 = car stays on the
+// aim line, 1 = parallel shift). Raise side for a more pronounced 3/4 view.
+const CHASE_CAM = {
+  side: 1.3,
+  lookShift: 0.3,
+  distScale: 0.88, // x the zone's orbit distance (closer than before)
+  height: 1.55, // extra height above the orbit arc (1.6 originally, 1.2 first 3/4 pass)
+  lookHeight: 3.4, // aim height above the car (was 3.6)
+  fov: 46, // resting FOV (was 50)
+};
+
+// At a stop the camera slowly drifts to a 3/4 angle toward the project (sign =
+// side of the avenue the project is on), keeping both the car and the project in frame.
 const STATION_STOPS: Array<{ id: Exclude<ProjectStationId, null>; stopZ: number; camYaw: number }> = [
-  { id: 'web', stopZ: -82, camYaw: 0.14 },
-  { id: 'albion', stopZ: -210, camYaw: 0.18 },
-  { id: 'tenders', stopZ: -332, camYaw: -0.14 },
+  { id: 'web', stopZ: -82, camYaw: 0.34 },
+  { id: 'albion', stopZ: -210, camYaw: 0.4 },
+  { id: 'tenders', stopZ: -332, camYaw: -0.34 },
 ];
+
+// While parked at a project the camera also pulls back / lifts and aims nearer to
+// the car, so the whole car stays in frame (not cropped by the HUD) next to the project.
+const STATION_CAM = {
+  distBoost: 1.22, // x chase distance
+  heightAdd: 0.7, // metres
+  sideScale: 0.4, // fraction of the chase side offset kept
+  lookDist: 10, // aim point distance ahead (chase uses 16)
+  lookHeight: 2.3,
+};
 
 export interface WorldTelemetry {
   fps: number;
@@ -141,6 +168,11 @@ export class WorldSceneEngine {
   private camera: THREE.PerspectiveCamera;
   private composer: EffectComposer;
   private bloomPass: UnrealBloomPass;
+  private bloomBase = 0.28;
+  private baseFov = 50;
+  private trans = new TransitionDirector();
+  private transPass!: ShaderPass;
+  private fireTrails!: FireTrails;
 
   private reflectRT: THREE.WebGLRenderTarget;
   private reflectCam: THREE.PerspectiveCamera;
@@ -174,6 +206,8 @@ export class WorldSceneEngine {
   private temporalFlash = 0;
   private flashKind: 'jump' | 'launch' | null = null;
 
+  private recenterCam = false;
+  private stationBlend = 0; // 0 = driving chase cam, 1 = parked-at-a-project framing
   private orbitYaw = 0.04;
   private orbitPitch = 0.13;
   private orbitDist = 8.2;
@@ -280,7 +314,8 @@ export class WorldSceneEngine {
       this.dynamicLightPool.push(pl);
     }
 
-    this.vehicle = createVehicleController(this.scene, onProgress);
+    this.vehicle = createVehicleController(this.scene, onProgress, this.renderer);
+    this.fireTrails = createFireTrails(this.scene);
     // Loading screen waits for the car AND the tree GLB; tree shaders get a
     // second compile so they never stutter on first appearance.
     this.ready = Promise.all([this.vehicle.ready, treesReady]).then(() => {
@@ -319,6 +354,11 @@ export class WorldSceneEngine {
     this.composer.setSize(width, height);
 
     this.composer.addPass(new RenderPass(this.scene, this.camera));
+
+    // Transition post pass (warp blur + chromatic aberration + HDR white-out).
+    // Before bloom so the flash blooms; disabled outside transitions.
+    this.transPass = createTransitionPass();
+    this.composer.addPass(this.transPass);
 
     this.bloomPass = new UnrealBloomPass(
       new THREE.Vector2(width, height), // composer.setSize governs actual res; internal mip0 is already half
@@ -385,7 +425,7 @@ export class WorldSceneEngine {
       this.activeStation = null;
     }
     this.autoCruise = true;
-    this.orbitYaw = THREE.MathUtils.lerp(this.orbitYaw, 0.04, 0.6);
+    this.recenterCam = true; // ease the camera back behind the car while driving off
     this.emitTelemetry();
   }
 
@@ -425,6 +465,8 @@ export class WorldSceneEngine {
   public jumpToZone(zoneId: string, instant = false) {
     const z = WORLD_ZONES.find((item) => item.id === zoneId) || WORLD_ZONES[0];
     this.activeZoneId = z.id;
+    this.trans.reset();
+    this.fireTrails?.reset();
     this.vehicle.setPose(z.x, z.z, 0, z.y ?? 0, z.pitch ?? 0);
     if (z.camYaw !== undefined) this.orbitYaw = z.camYaw;
     if (z.camPitch !== undefined) this.orbitPitch = z.camPitch;
@@ -470,7 +512,8 @@ export class WorldSceneEngine {
   public setDuskDepth(val: number) {
     this.duskDepth = Math.max(0, Math.min(1, val));
     this.envSystem.setMoodShift(this.duskDepth);
-    this.bloomPass.strength = 0.24 + this.duskDepth * 0.16;
+    this.bloomBase = 0.24 + this.duskDepth * 0.16;
+    this.bloomPass.strength = this.bloomBase;
     this.emitTelemetry();
   }
 
@@ -498,29 +541,45 @@ export class WorldSceneEngine {
         carPos.z - 12.0 * (1 - climbT * 0.85)
       );
     } else if (this.cameraMode === 'chase') {
+      // Cinematic chase: lower and closer than before, shifted to one side so the
+      // car is seen 3/4 from behind (tail light + flank) instead of dead-centre,
+      // with a gentle speed-driven sway like a handheld tracking shot.
+      const C = CHASE_CAM;
       const yaw = carYaw + this.orbitYaw;
       const pitch = THREE.MathUtils.clamp(this.orbitPitch, 0.05, 0.65);
-      const dist = this.orbitDist;
+      const sb = this.stationBlend;
+      const dist = this.orbitDist * C.distScale * THREE.MathUtils.lerp(1, STATION_CAM.distBoost, sb);
       const horiz = dist * Math.cos(pitch);
-      const vert = dist * Math.sin(pitch) + 1.6;
+      const vert = dist * Math.sin(pitch) + C.height + STATION_CAM.heightAdd * sb;
+
+      const sn = THREE.MathUtils.clamp(Math.abs(this.vehicle.speed) / 34, 0, 1);
+      const calm = this.trans.reduced ? 0.2 : 1;
+      const t = this.elapsedTime;
+      const sway = (Math.sin(t * 0.55) * 0.16 + Math.sin(t * 1.3 + 0.7) * 0.05) * sn * calm;
+      const bob = Math.sin(t * 0.9 + 1.1) * 0.05 * sn * calm;
+      const side = C.side * THREE.MathUtils.lerp(1, STATION_CAM.sideScale, sb) + sway;
+      const lookDist = THREE.MathUtils.lerp(16, STATION_CAM.lookDist, sb);
+      const lookH = THREE.MathUtils.lerp(C.lookHeight, STATION_CAM.lookHeight, sb);
+      // car's right-hand direction on the ground plane (forward is -Z at yaw 0)
+      const rx = Math.cos(yaw);
+      const rz = -Math.sin(yaw);
 
       desiredPos.set(
-        carPos.x + Math.sin(yaw) * horiz,
-        carPos.y + vert,
-        carPos.z + Math.cos(yaw) * horiz
+        carPos.x + Math.sin(yaw) * horiz + rx * side,
+        carPos.y + vert + bob,
+        carPos.z + Math.cos(yaw) * horiz + rz * side
       );
 
       desiredLook.set(
-        carPos.x - Math.sin(yaw) * 16.0,
-        carPos.y + 3.6,
-        carPos.z - Math.cos(yaw) * 16.0
+        carPos.x - Math.sin(yaw) * lookDist + rx * side * C.lookShift,
+        carPos.y + lookH,
+        carPos.z - Math.cos(yaw) * lookDist + rz * side * C.lookShift
       );
-      this.camera.fov = THREE.MathUtils.lerp(
-        this.camera.fov,
-        50 + Math.min(12, Math.abs(this.vehicle.speed) * 0.22),
+      this.baseFov = THREE.MathUtils.lerp(
+        this.baseFov,
+        C.fov + Math.min(12, Math.abs(this.vehicle.speed) * 0.22),
         1 - Math.exp(-6 * dt)
       );
-      this.camera.updateProjectionMatrix();
     } else if (this.cameraMode === 'cinematic-low') {
       const yaw = carYaw + this.orbitYaw - 0.22;
       desiredPos.set(
@@ -533,8 +592,7 @@ export class WorldSceneEngine {
         carPos.y + 5.5,
         carPos.z - Math.cos(carYaw) * 18.0
       );
-      this.camera.fov = THREE.MathUtils.lerp(this.camera.fov, 56, 1 - Math.exp(-6 * dt));
-      this.camera.updateProjectionMatrix();
+      this.baseFov = THREE.MathUtils.lerp(this.baseFov, 56, 1 - Math.exp(-6 * dt));
     } else {
       const pitch = THREE.MathUtils.clamp(this.orbitPitch, 0.04, 1.15);
       const dist = this.orbitDist;
@@ -557,12 +615,31 @@ export class WorldSceneEngine {
       desiredLook.lerpVectors(new THREE.Vector3(-0.5, 1.9, 298), desiredLook, k);
     }
 
-    const damp = 1 - Math.exp(-8.5 * dt);
+    // While the car climbs at rocket speed the camera must catch up much faster,
+    // otherwise it trails ~11 m behind and the car shrinks away right after the flash.
+    const followRate = THREE.MathUtils.lerp(8.5, 22, THREE.MathUtils.smoothstep(carPitch, 0.05, 0.45));
+    const damp = 1 - Math.exp(-followRate * dt);
     this.smoothCamPos.lerp(desiredPos, damp);
     this.smoothLookAt.lerp(desiredLook, damp);
 
     this.camera.position.copy(this.smoothCamPos);
     this.camera.lookAt(this.smoothLookAt);
+
+    // Transition feel, applied AFTER the smoothing so the damper can't eat it:
+    // FOV kick + procedural shake (position jitter + roll).
+    const tr = this.trans.state;
+    const fovTarget = Math.min(105, this.baseFov + tr.fovKick);
+    if (Math.abs(this.camera.fov - fovTarget) > 0.01) {
+      this.camera.fov = fovTarget;
+      this.camera.updateProjectionMatrix();
+    }
+    if (tr.shake > 0.002) {
+      const t = this.elapsedTime;
+      const a = tr.shake * TRANSITION_TUNING.shakePos;
+      this.camera.position.x += (Math.sin(t * 37.1) * 0.6 + Math.sin(t * 23.7 + 1.3) * 0.4) * a;
+      this.camera.position.y += (Math.sin(t * 41.9 + 2.1) * 0.6 + Math.sin(t * 17.3) * 0.4) * a;
+      this.camera.rotateZ(Math.sin(t * 29.3 + 0.7) * tr.shake * TRANSITION_TUNING.shakeRoll);
+    }
   }
 
   private resolveCurrentZone(zPos: number, yPos: number): WorldZonePreset {
@@ -646,7 +723,8 @@ export class WorldSceneEngine {
             slowdownFactor = 1.0;
             this.activeStation = st.id;
             if (!this.isPointerDown) {
-              this.orbitYaw = THREE.MathUtils.lerp(this.orbitYaw, st.camYaw, 1 - Math.exp(-3 * dt));
+              // slow cinematic drift (was a quick 3/s snap) toward the 3/4 angle
+              this.orbitYaw = THREE.MathUtils.lerp(this.orbitYaw, st.camYaw, 1 - Math.exp(-0.9 * dt));
             }
           }
           break;
@@ -654,7 +732,13 @@ export class WorldSceneEngine {
       }
 
       // In Act III Space Launch, once car climbs to y >= 95m, open the Space Finale Contact card
-      if (yPos >= 95 && !this.clearedStations.has('space')) {
+      // (Let the rocket flight play for a few seconds before the card opens —
+      // teleporting straight to the space zone skips the wait.)
+      if (
+        yPos >= 95 &&
+        !this.clearedStations.has('space') &&
+        (!this.trans.launchPlaying || this.trans.launchElapsed >= TRANSITION_TUNING.launch.cardDelaySecs)
+      ) {
         slowdownFactor = 0.72; // Keep gentle zero-gravity drift among the rushing stars
         this.activeStation = 'space';
       }
@@ -669,20 +753,39 @@ export class WorldSceneEngine {
     // Temporal flashes: (1) at the ENTRY of the Ribbed Gate — we flash out of
     // the past and drive the vault mid-jump; (2) at the Continuum ring — masks
     // the 90° pitch-up and lets us drop the whole city below.
-    let flashTarget = 0;
-    this.flashKind = null;
-    if (zPos < 106 && zPos > 72 && yPos < 2) {
-      flashTarget = Math.max(0, 1 - Math.abs(zPos - 89) / 16);
-      this.flashKind = 'jump';
-    } else if (zPos < -434 && zPos > -472 && yPos < 10) {
-      flashTarget = Math.max(0, 1 - Math.abs(zPos + 452) / 18);
-      this.flashKind = 'launch';
+    // Now driven by the TransitionDirector: timeline from the moment the car
+    // crosses the gate / ring (see transitions.ts, all numbers in one place).
+    // After leaving a station the 3/4 drift eases back to the chase angle
+    // (unless the user grabbed the camera).
+    if (this.recenterCam && !this.isPointerDown) {
+      this.orbitYaw = THREE.MathUtils.lerp(this.orbitYaw, 0.04, 1 - Math.exp(-1.3 * dt));
+      if (Math.abs(this.orbitYaw - 0.04) < 0.004) this.recenterCam = false;
     }
-    this.temporalFlash = THREE.MathUtils.lerp(
-      this.temporalFlash,
-      flashTarget,
-      1 - Math.exp(-(flashTarget > this.temporalFlash ? 14 : 6) * dt)
-    );
+
+    const atProject = this.activeStation !== null && this.activeStation !== 'space';
+    this.stationBlend += ((atProject ? 1 : 0) - this.stationBlend) * (1 - Math.exp(-1.0 * dt));
+
+    this.trans.update(dt, zPos, yPos, this.vehicle.speed);
+    const tr = this.trans.state;
+    this.temporalFlash = tr.flash;
+    this.flashKind = tr.flash > 0.02 ? tr.kind : null;
+
+    // Post pass + bloom: only pay for the warp pass while a transition plays.
+    const passOn = tr.flash > 0.002 || tr.warp > 0.01;
+    this.transPass.enabled = passOn;
+    if (passOn) {
+      this.transPass.uniforms.uWarp.value = tr.warp;
+      this.transPass.uniforms.uFlash.value = tr.flash;
+      this.transPass.uniforms.uFlashEdge.value = tr.flashEdge;
+      this.transPass.uniforms.uAspect.value = this.camera.aspect;
+    }
+    this.vehicle.setFx(tr.carFx);
+    // An edge-weighted (see-through) flash must not bloom the bright ribs into a
+    // haze, so its bloom contribution is cut down.
+    this.bloomPass.strength =
+      this.bloomBase + tr.flash * (0.9 - 0.6 * tr.flashEdge) + tr.warp * 0.12;
+    // Hit-stop: the simulation (car + camera) runs on scaled time, UI/fps on real time.
+    const sdt = dt * tr.timeScale;
 
     // Space approach: strip the expensive passes BEFORE the launch, not at it.
     // Past z≈-435 the city is behind the camera anyway — hide world, kill the
@@ -716,11 +819,18 @@ export class WorldSceneEngine {
     const spaceFactor = THREE.MathUtils.clamp((yPos - 5) / 55 + (-442 - zPos) / 35, 0, 1);
 
     this.renderer.info.reset();
-    this.vehicle.update(dt, this.input, this.autoCruise, slowdownFactor);
-    this.updateCamera(dt);
+    this.vehicle.update(sdt, this.input, this.autoCruise, slowdownFactor, tr.cruiseBoost);
+    this.fireTrails.update(
+      this.elapsedTime,
+      this.vehicle.root,
+      this.vehicle.speed,
+      tr.carFx > 0.15,
+      (this.renderer.domElement.height * 0.5) / Math.tan(THREE.MathUtils.degToRad(this.camera.fov * 0.5))
+    );
+    this.updateCamera(sdt);
     this.avenue.update(this.elapsedTime);
     this.envSystem.update(this.elapsedTime, this.vehicle.position);
-    this.spaceCosmos.update(this.elapsedTime, this.vehicle.position, spaceFactor);
+    this.spaceCosmos.update(this.elapsedTime, this.vehicle.position, spaceFactor, this.vehicle.speed);
     palette.updateUniforms(this.elapsedTime);
 
     if (this.frameCounter % 3 === 0) {
@@ -818,6 +928,7 @@ export class WorldSceneEngine {
 
   private handlePointerDown = (e: PointerEvent) => {
     this.isPointerDown = true;
+    this.recenterCam = false;
     this.lastPointerX = e.clientX;
     this.lastPointerY = e.clientY;
   };
@@ -894,7 +1005,13 @@ export class WorldSceneEngine {
     this.spaceCosmos.update(0, this.vehicle.position, 1);
     this.renderer.shadowMap.needsUpdate = true;
     this.updatePlanarReflection();
+    // Also compile the transition post pass now (it is toggled on mid-journey).
+    this.transPass.enabled = true;
+    this.transPass.uniforms.uWarp.value = 0.01;
+    this.transPass.uniforms.uFlash.value = 0.001;
+    this.transPass.uniforms.uAspect.value = this.camera.aspect;
     this.composer.render();
+    this.transPass.enabled = false;
 
     for (const [o, v] of culled) o.frustumCulled = v;
     this.avenue.group.visible = prevAvenue;

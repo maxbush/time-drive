@@ -2,7 +2,7 @@ import * as THREE from 'three';
 
 export interface SpaceCosmosSystem {
   group: THREE.Group;
-  update: (time: number, carPos: THREE.Vector3, spaceFactor: number) => void;
+  update: (time: number, carPos: THREE.Vector3, spaceFactor: number, speed?: number) => void;
 }
 
 export function createSpaceCosmos(scene: THREE.Scene): SpaceCosmosSystem {
@@ -109,13 +109,23 @@ export function createSpaceCosmos(scene: THREE.Scene): SpaceCosmosSystem {
 
   const dummy = new THREE.Object3D();
   const col = new THREE.Color();
+  let lastTime = 0;
+  let phase = 0;
 
   return {
     group,
-    update: (time: number, carPos: THREE.Vector3, spaceFactor: number) => {
+    update: (time: number, carPos: THREE.Vector3, spaceFactor: number, speed = 0) => {
       const sf = THREE.MathUtils.clamp(spaceFactor, 0, 1);
       group.visible = sf > 0.01;
       if (!group.visible) return;
+
+      // Streaks flow faster AND stretch with the car's speed: dots at rest,
+      // long hyperspace lines during the rocket burst, calm again after.
+      const speedNorm = THREE.MathUtils.clamp(speed / 95, 0, 1);
+      const dtl = time - lastTime;
+      lastTime = time;
+      if (dtl > 0 && dtl < 0.25) phase += dtl * (1 + 1.6 * speedNorm);
+      const stretch = 1 + 2.4 * speedNorm;
 
       streakMat.opacity = sf * 0.85;
       starMat.opacity = sf * 0.95;
@@ -127,9 +137,9 @@ export function createSpaceCosmos(scene: THREE.Scene): SpaceCosmosSystem {
 
       for (let i = 0; i < streakCount; i++) {
         const s = streakSeeds[i];
-        const relY = ((s.y - time * s.speed) % 240 + 240) % 240 - 60;
+        const relY = ((s.y - phase * s.speed) % 240 + 240) % 240 - 60;
         dummy.position.set(s.x, carPos.y + relY, s.z);
-        dummy.scale.set(1, s.len * (0.4 + sf * 0.9), 1);
+        dummy.scale.set(1, s.len * (0.4 + sf * 0.9) * stretch, 1);
         dummy.updateMatrix();
         streakInst.setMatrixAt(i, dummy.matrix);
 
