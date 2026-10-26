@@ -266,7 +266,7 @@ export function createEnvironment(
   const skyDirLight = new THREE.DirectionalLight('#ffdcb8', 1.42);
   skyDirLight.position.set(55, 68, 45);
   skyDirLight.castShadow = true;
-  skyDirLight.shadow.mapSize.set(2048, 2048);
+  skyDirLight.shadow.mapSize.set(1024, 1024);
   skyDirLight.shadow.camera.near = 10;
   skyDirLight.shadow.camera.far = 260;
   const shadowSpan = 75;

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+import { SMAAPass } from 'three/examples/jsm/postprocessing/SMAAPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { createTextureLibrary } from './textures';
 import { createMaterialPalette } from './materials';
@@ -196,7 +197,7 @@ export class WorldSceneEngine {
   private dprTimer = 0;
   private viewW = 1;
   private viewH = 1;
-  private dprCap = 2.0;
+  private dprCap = 1.6;
   private qualityTier = 0; // 0 full → 1 low-DPR → 2 no reflection → 3 no bloom
   private lowStreak = 0;
   private reflectionDisabled = false;
@@ -224,11 +225,11 @@ export class WorldSceneEngine {
     const height = Math.max(1, container.clientHeight);
     this.viewW = width;
     this.viewH = height;
-    const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+    const pixelRatio = Math.min(window.devicePixelRatio || 1, 1.6);
     this.currentDpr = pixelRatio;
 
     this.renderer = new THREE.WebGLRenderer({
-      antialias: true,
+      antialias: false, // composer path — SMAAPass handles edges, MSAA here is dead weight
       powerPreference: 'high-performance',
       stencil: false,
     });
@@ -236,6 +237,7 @@ export class WorldSceneEngine {
     this.renderer.setSize(width, height);
     this.renderer.setPixelRatio(pixelRatio);
     this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.autoUpdate = false; // driven manually every 2nd frame
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.04;
@@ -299,7 +301,7 @@ export class WorldSceneEngine {
       Math.floor(height * pixelRatio),
       {
         type: THREE.HalfFloatType,
-        samples: 4,
+        samples: 0, // MSAA×4 on HalfFloat was the biggest bandwidth hog on the frame
       }
     );
     this.composer = new EffectComposer(this.renderer, composerRT);
@@ -316,6 +318,7 @@ export class WorldSceneEngine {
     );
     this.composer.addPass(this.bloomPass);
     this.composer.addPass(new OutputPass());
+    this.composer.addPass(new SMAAPass(width, height));
 
     this.jumpToZone(WORLD_ZONES[0].id, true);
     // Spawn the car just behind the intro camera so it drives into frame.
@@ -332,7 +335,7 @@ export class WorldSceneEngine {
       this.reflectionDisabled = true;
       this.bloomPass.enabled = false;
       this.qualityTier = 3;
-    } else if (q === 'med') {
+    } else if (q === 'med' || (!q && navigator.maxTouchPoints > 0)) {
       this.dprCap = 1.5;
       this.currentDpr = Math.min(this.currentDpr, 1.5);
       this.renderer.setPixelRatio(this.currentDpr);
@@ -696,6 +699,9 @@ export class WorldSceneEngine {
 
     const curZone = this.resolveCurrentZone(this.vehicle.position.z, this.vehicle.position.y);
     this.activeZoneId = curZone.id;
+
+    // Shadow map renders every other frame — halves the third pass cost
+    this.renderer.shadowMap.needsUpdate = this.frameCounter % 2 === 0;
 
     if (this.frameCounter % 2 === 0) {
       this.updatePlanarReflection();
