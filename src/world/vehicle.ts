@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 
 export type CarModelId = 'bttf' | 'alpha5' | 'rimac';
 
@@ -123,6 +124,7 @@ export function createVehicleController(
   // (fire-trail exhaust particles removed — FX to be redesigned)
 
   const loader = new GLTFLoader();
+  loader.setMeshoptDecoder(MeshoptDecoder);
   const loadedModels = new Map<CarModelId, THREE.Group>();
   let activeModelGroup: THREE.Group | null = null;
   let currentCar: CarModelId = 'bttf';
@@ -147,7 +149,45 @@ export function createVehicleController(
     activeModelGroup = group;
     chassis.add(group);
     currentCar = id;
+    setupWheelPivots(group);
   };
+
+  // Wheels have baked transforms in these Sketchfab GLBs — detect them by
+  // bounding box (roundish, low, out at the four corners) and re-pivot.
+  const wheelPivots: { pivot: THREE.Group; r: number }[] = [];
+  const setupWheelPivots = (group: THREE.Group) => {
+    wheelPivots.length = 0;
+    group.updateMatrixWorld(true);
+    const carBox = new THREE.Box3().setFromObject(group);
+    const carSize = carBox.getSize(new THREE.Vector3());
+    const carC = carBox.getCenter(new THREE.Vector3());
+    const candidates: { mesh: THREE.Mesh; c: THREE.Vector3; r: number }[] = [];
+    group.traverse((o) => {
+      if (!(o instanceof THREE.Mesh)) return;
+      const b = new THREE.Box3().setFromObject(o);
+      const s = b.getSize(new THREE.Vector3());
+      const c = b.getCenter(new THREE.Vector3());
+      const low = c.y - carBox.min.y < 0.5 * carSize.y;
+      const outX = Math.abs(c.x - carC.x) > carSize.x * 0.2;
+      const outZ = Math.abs(c.z - carC.z) > carSize.z * 0.2;
+      const roundish = s.y > 0.3 && Math.abs(s.y - s.z) / s.y < 0.45 && s.x < s.y * 0.8;
+      if (low && outX && outZ && roundish && candidates.length < 8) {
+        candidates.push({ mesh: o, c, r: s.y / 2 });
+      }
+    });
+    for (const { mesh, c, r } of candidates) {
+      const parent = mesh.parent!;
+      const pivot = new THREE.Group();
+      parent.add(pivot);
+      parent.updateMatrixWorld(true);
+      pivot.position.copy(parent.worldToLocal(c.clone()));
+      pivot.attach(mesh);
+      pivot.userData.r = r;
+      wheelPivots.push({ pivot, r });
+    }
+  };
+  const spinLateral = new THREE.Vector3();
+  const spinAxis = new THREE.Vector3();
 
   const loadCarModel = (id: CarModelId) => {
     const cached = loadedModels.get(id);
@@ -352,6 +392,16 @@ export function createVehicleController(
       headR.intensity = headI;
       headL.target.updateMatrixWorld();
       headR.target.updateMatrixWorld();
+
+      // Wheel spin — re-pivoted hubs rotate about the car's lateral axis
+      if (wheelPivots.length && Math.abs(speed) > 0.05) {
+        spinLateral.set(Math.cos(heading), 0, -Math.sin(heading));
+        for (const { pivot, r } of wheelPivots) {
+          pivot.updateWorldMatrix(true, false);
+          spinAxis.copy(spinLateral).transformDirection(pivot.matrixWorld.clone().invert());
+          pivot.rotateOnAxis(spinAxis, (-speed * dt) / r);
+        }
+      }
 
     },
   };
