@@ -103,12 +103,12 @@ export function createVehicleController(
   const headL = mkHeadlight(-0.85);
   const headR = mkHeadlight(0.85);
 
-  const headGlowL = lampSprite('#ffd9a2', 0.8);
-  headGlowL.position.set(-0.85, 0.98, -3.72);
-  (headGlowL.material as THREE.SpriteMaterial).opacity = 0.9;
-  const headGlowR = lampSprite('#ffd9a2', 0.8);
-  headGlowR.position.set(0.85, 0.98, -3.72);
-  (headGlowR.material as THREE.SpriteMaterial).opacity = 0.9;
+  const headGlowL = lampSprite('#fff3d9', 0.5);
+  headGlowL.position.set(-0.84, 1.0, -3.8);
+  (headGlowL.material as THREE.SpriteMaterial).opacity = 0.55;
+  const headGlowR = lampSprite('#fff3d9', 0.5);
+  headGlowR.position.set(0.84, 1.0, -3.8);
+  (headGlowR.material as THREE.SpriteMaterial).opacity = 0.55;
   root.add(headGlowL, headGlowR);
 
   // Taillights: full-width rear glow + brake dynamics
@@ -121,8 +121,8 @@ export function createVehicleController(
   // Glowing lens elements inside the headlamps (visible even where beams aren't)
   const lensMat = new THREE.MeshStandardMaterial({
     color: new THREE.Color('#0a0e14'),
-    emissive: new THREE.Color('#cfe6ff'),
-    emissiveIntensity: 3.2,
+    emissive: new THREE.Color('#dceeff'),
+    emissiveIntensity: 2.1,
     roughness: 0.25,
     metalness: 0.4,
   });
