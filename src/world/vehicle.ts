@@ -22,7 +22,8 @@ export interface VehicleController {
     dt: number,
     input: { forward: boolean; backward: boolean; left: boolean; right: boolean; boost: boolean },
     autoCruise: boolean,
-    stationSlowdownFactor: number
+    stationSlowdownFactor: number,
+    flashBoost?: number
   ) => void;
 }
 
@@ -86,17 +87,57 @@ export function createVehicleController(scene: THREE.Scene): VehicleController {
     return s;
   };
 
-  // Dual real headlights: tight warm beams pooling on the asphalt ahead
+  // Dual real headlights: wide soft cool-white beams pooling on asphalt ahead
   const mkHeadlight = (x: number) => {
-    const spot = new THREE.SpotLight('#ffe2b0', 34, 68, 0.24, 0.6, 1.55);
+    const spot = new THREE.SpotLight('#e6efff', 42, 62, 0.3, 0.75, 1.5);
     spot.position.set(x, 1.05, -3.55);
-    spot.target.position.set(x * 1.8, -0.5, -27);
+    spot.target.position.set(x * 1.6, -0.4, -30);
     root.add(spot);
     root.add(spot.target);
     return spot;
   };
   const headL = mkHeadlight(-0.85);
   const headR = mkHeadlight(0.85);
+
+  // Barely-there volumetric haze cones so beams read in the dusk air
+  const beamMat = new THREE.ShaderMaterial({
+    transparent: true,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+    uniforms: { uOpacity: { value: 0.1 } },
+    vertexShader: `
+      varying vec3 vLocal;
+      varying float vFace;
+      void main() {
+        vLocal = position;
+        vec4 mv = modelViewMatrix * vec4(position, 1.0);
+        vFace = abs(dot(normalize(normalMatrix * normal), normalize(-mv.xyz)));
+        gl_Position = projectionMatrix * mv;
+      }
+    `,
+    fragmentShader: `
+      uniform float uOpacity;
+      varying vec3 vLocal;
+      varying float vFace;
+      void main() {
+        float d = clamp(-vLocal.z / 24.0, 0.0, 1.0);
+        float prof = smoothstep(0.0, 0.06, d) * pow(1.0 - d, 1.5);
+        float a = uOpacity * prof * (0.3 + 0.7 * pow(vFace, 1.3));
+        gl_FragColor = vec4(vec3(0.85, 0.92, 1.1) * a, a);
+      }
+    `,
+  });
+  const beamGeo = new THREE.CylinderGeometry(1.45, 0.07, 24, 14, 4, true);
+  beamGeo.translate(0, -12, 0);
+  beamGeo.rotateX(Math.PI / 2); // narrow end at lamp, wide end 24m forward
+  const beamL = new THREE.Mesh(beamGeo, beamMat);
+  beamL.position.set(-0.85, 1.0, -3.55);
+  const beamR = new THREE.Mesh(beamGeo, beamMat);
+  beamR.position.set(0.85, 1.0, -3.55);
+  beamL.layers.set(1);
+  beamR.layers.set(1);
+  root.add(beamL, beamR);
 
   const headGlowL = lampSprite('#ffd9a2', 0.62);
   headGlowL.position.set(-0.85, 0.98, -3.58);
@@ -137,7 +178,139 @@ export function createVehicleController(scene: THREE.Scene): VehicleController {
   });
   const exhaust = new THREE.Points(pGeo, pMat);
   exhaust.frustumCulled = false;
+  exhaust.layers.set(1);
   scene.add(exhaust);
+
+  // ---- BTTF fire-trail ribbons: two flame ribbons streaming off rear wheels ----
+  const TRAIL_N = 56;
+  const trailIdx: number[] = [];
+  for (let i = 0; i < TRAIL_N - 1; i++) {
+    const v = i * 2;
+    trailIdx.push(v, v + 1, v + 2, v + 1, v + 3, v + 2);
+  }
+  const mkTrail = () => {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(TRAIL_N * 2 * 3), 3));
+    g.setAttribute('aAge', new THREE.BufferAttribute(new Float32Array(TRAIL_N * 2), 1));
+    g.setAttribute('aEdge', new THREE.BufferAttribute(new Float32Array(TRAIL_N * 2), 1));
+    g.setIndex(trailIdx);
+    const m = new THREE.ShaderMaterial({
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      uniforms: { uOpacity: { value: 0 }, uTime: { value: 0 } },
+      vertexShader: `
+        attribute float aAge;
+        attribute float aEdge;
+        varying float vAge;
+        varying float vEdge;
+        uniform float uTime;
+        void main() {
+          vAge = aAge;
+          vEdge = aEdge;
+          vec3 p = position;
+          p.y += sin(aAge * 9.0 - uTime * 9.0) * 0.07 * aAge;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform float uOpacity;
+        varying float vAge;
+        varying float vEdge;
+        void main() {
+          float edge = sin(vEdge * 3.14159);
+          vec3 col = mix(vec3(3.0, 2.4, 1.2), vec3(2.2, 0.5, 0.08), smoothstep(0.0, 0.45, vAge));
+          col = mix(col, vec3(0.4, 0.04, 0.0), smoothstep(0.45, 1.0, vAge));
+          float a = uOpacity * edge * pow(1.0 - vAge, 1.25);
+          gl_FragColor = vec4(col * a, a);
+        }
+      `,
+    });
+    const mesh = new THREE.Mesh(g, m);
+    mesh.frustumCulled = false;
+    mesh.layers.set(1);
+    scene.add(mesh);
+    return {
+      mesh,
+      geo: g,
+      mat: m,
+      pos: new Float32Array(TRAIL_N * 3),
+      right: new Float32Array(TRAIL_N * 3),
+      count: 0,
+    };
+  };
+  const trailL = mkTrail();
+  const trailR = mkTrail();
+
+  const updateTrail = (
+    trail: ReturnType<typeof mkTrail>,
+    emitter: THREE.Vector3,
+    emitting: boolean,
+    t: number
+  ) => {
+    const m = trail.mat;
+    const targetOp = emitting ? 0.9 : 0;
+    m.uniforms.uOpacity.value = THREE.MathUtils.lerp(
+      m.uniforms.uOpacity.value,
+      targetOp,
+      1 - Math.exp(-8 * t)
+    );
+    m.uniforms.uTime.value = exhaustTime;
+    trail.mesh.visible = m.uniforms.uOpacity.value > 0.02;
+    if (!trail.mesh.visible) {
+      trail.count = 0;
+      return;
+    }
+
+    if (emitting) {
+      // shift history one slot back, write fresh head point
+      if (trail.count > 0) {
+        const lx = trail.pos[0] - emitter.x;
+        const ly = trail.pos[1] - emitter.y;
+        const lz = trail.pos[2] - emitter.z;
+        if (lx * lx + ly * ly + lz * lz > 36) trail.count = 0; // trail teleported: reset
+      }
+      if (trail.count > 0) {
+        trail.pos.copyWithin(3, 0, (TRAIL_N - 1) * 3);
+        trail.right.copyWithin(3, 0, (TRAIL_N - 1) * 3);
+      }
+      trail.pos[0] = emitter.x;
+      trail.pos[1] = emitter.y;
+      trail.pos[2] = emitter.z;
+      // car's lateral axis in world space
+      trail.right[0] = root.matrixWorld.elements[0];
+      trail.right[1] = root.matrixWorld.elements[1];
+      trail.right[2] = root.matrixWorld.elements[2];
+      trail.count = Math.min(TRAIL_N, trail.count + 1);
+    }
+
+    // rebuild strip from history
+    const posAttr = trail.geo.attributes.position as THREE.BufferAttribute;
+    const ageAttr = trail.geo.attributes.aAge as THREE.BufferAttribute;
+    const edgeAttr = trail.geo.attributes.aEdge as THREE.BufferAttribute;
+    const n = Math.max(1, trail.count);
+    for (let i = 0; i < TRAIL_N; i++) {
+      const hi = Math.min(i, n - 1);
+      const age = i / (TRAIL_N - 1);
+      const w = 0.42 * (1 - age * 0.75);
+      const px = trail.pos[hi * 3];
+      const py = trail.pos[hi * 3 + 1];
+      const pz = trail.pos[hi * 3 + 2];
+      const rx = trail.right[hi * 3];
+      const ry = trail.right[hi * 3 + 1];
+      const rz = trail.right[hi * 3 + 2];
+      posAttr.setXYZ(i * 2, px - rx * w, py - ry * w - 0.04, pz - rz * w);
+      posAttr.setXYZ(i * 2 + 1, px + rx * w, py + ry * w + 0.04, pz + rz * w);
+      ageAttr.setX(i * 2, age);
+      ageAttr.setX(i * 2 + 1, age);
+      edgeAttr.setX(i * 2, 0);
+      edgeAttr.setX(i * 2 + 1, 1);
+    }
+    posAttr.needsUpdate = true;
+    ageAttr.needsUpdate = true;
+    edgeAttr.needsUpdate = true;
+  };
 
   const loader = new GLTFLoader();
   const loadedModels = new Map<CarModelId, THREE.Group>();
@@ -263,7 +436,7 @@ export function createVehicleController(scene: THREE.Scene): VehicleController {
       chassis.rotation.set(0, 0, 0);
       root.updateMatrixWorld(true);
     },
-    update: (dt, input, autoCruise, stationSlowdownFactor) => {
+    update: (dt, input, autoCruise, stationSlowdownFactor, flashBoost = 0) => {
       exhaustTime += dt;
       const maxSpeed = input.boost ? 56 : 34;
       const accel = input.boost ? 36 : 22;
@@ -351,15 +524,19 @@ export function createVehicleController(scene: THREE.Scene): VehicleController {
       // --- Headlight dynamics: subtle boost surge + beam flicker ---------------
       const flicker = input.boost ? Math.sin(exhaustTime * 47) * 3.5 : 0;
       const headI = 30 + Math.min(14, Math.abs(speed) * 0.22) + flicker;
-      headL.intensity = headI;
-      headR.intensity = headI;
+      const flightDim = 1 - THREE.MathUtils.clamp(pitchAngle / 1.2, 0, 1) * 0.85;
+      headL.intensity = headI * flightDim;
+      headR.intensity = headI * flightDim;
+      beamMat.uniforms.uOpacity.value = (0.06 + Math.min(0.07, Math.abs(speed) * 0.0016)) * flightDim;
+      (headGlowL.material as THREE.SpriteMaterial).opacity = 0.75 * flightDim;
+      (headGlowR.material as THREE.SpriteMaterial).opacity = 0.75 * flightDim;
       headL.target.updateMatrixWorld();
       headR.target.updateMatrixWorld();
 
-      // --- Space-flight dynamics: heat glow + BTTF fire-trail exhaust ----------
+      // --- Space-flight dynamics: BTTF fire-trail exhaust ----------------------
       const flightFactor = THREE.MathUtils.clamp(pitchAngle / 1.2, 0, 1);
       const boosting = input.boost && Math.abs(speed) > 28;
-      const emitting = flightFactor > 0.02 || boosting;
+      const emitting = flightFactor > 0.02 || boosting || flashBoost > 0.25;
 
       carVel.copy(root.position).sub(prevPos).divideScalar(Math.max(dt, 0.001));
       prevPos.copy(root.position);
@@ -367,6 +544,9 @@ export function createVehicleController(scene: THREE.Scene): VehicleController {
       root.updateMatrixWorld();
       emitA.set(-1.05, 0.32, 3.55).applyMatrix4(root.matrixWorld);
       emitB.set(1.05, 0.32, 3.55).applyMatrix4(root.matrixWorld);
+
+      updateTrail(trailL, emitA, emitting, dt);
+      updateTrail(trailR, emitB, emitting, dt);
 
       for (let i = 0; i < P_COUNT; i++) {
         const i3 = i * 3;

@@ -129,6 +129,7 @@ export interface WorldTelemetry {
   duskDepth: number;
   activeStation: ProjectStationId;
   temporalFlash: number; // 0..1 flash/smoke intensity during Past->Present jump
+  flashKind: 'jump' | 'launch' | null;
   spaceFactor: number;   // 0..1 cosmic flight progress
 }
 
@@ -153,6 +154,7 @@ export class WorldSceneEngine {
 
   private envSystem: EnvironmentSystem;
   private avenue: AvenueSystem;
+  private archGroup!: THREE.Group;
   private vehicle: VehicleController;
   private spaceCosmos: SpaceCosmosSystem;
 
@@ -169,6 +171,7 @@ export class WorldSceneEngine {
   private activeStation: ProjectStationId = null;
   private clearedStations = new Set<string>();
   private temporalFlash = 0;
+  private flashKind: 'jump' | 'launch' | null = null;
 
   private orbitYaw = 0.04;
   private orbitPitch = 0.13;
@@ -241,7 +244,8 @@ export class WorldSceneEngine {
     this.scene.add(this.avenue.group);
 
     const archResult = buildWorldArchitecture(palette, texLib.maxAnisotropy);
-    this.scene.add(archResult.group);
+    this.archGroup = archResult.group;
+    this.scene.add(this.archGroup);
 
     // Load real 3D elm trees (`tree_elm.glb`) onto sidewalk planter islands, park mounds & Confluence terraces!
     loadAndPlaceElmTrees(this.scene, [
@@ -605,18 +609,33 @@ export class WorldSceneEngine {
       }
     }
 
-    // Compute Temporal Flash & Smoke intensity at the exit of The Ribbed Gate (z = +8 to -24)
-    if (zPos < 12 && zPos > -26 && yPos < 2) {
-      const centerDist = Math.abs(zPos - -6);
-      this.temporalFlash = Math.max(0, 1 - centerDist / 16);
-    } else {
-      this.temporalFlash = THREE.MathUtils.lerp(this.temporalFlash, 0, 1 - Math.exp(-6 * dt));
+    // Temporal flashes: (1) at the ENTRY of the Ribbed Gate — we flash out of
+    // the past and drive the vault mid-jump; (2) at the Continuum ring — masks
+    // the 90° pitch-up and lets us drop the whole city below.
+    let flashTarget = 0;
+    this.flashKind = null;
+    if (zPos < 106 && zPos > 72 && yPos < 2) {
+      flashTarget = Math.max(0, 1 - Math.abs(zPos - 89) / 16);
+      this.flashKind = 'jump';
+    } else if (zPos < -434 && zPos > -472 && yPos < 10) {
+      flashTarget = Math.max(0, 1 - Math.abs(zPos + 452) / 18);
+      this.flashKind = 'launch';
     }
+    this.temporalFlash = THREE.MathUtils.lerp(
+      this.temporalFlash,
+      flashTarget,
+      1 - Math.exp(-(flashTarget > this.temporalFlash ? 14 : 6) * dt)
+    );
+
+    // Hide the detailed city while flying high — flash masks the pop-out.
+    const hideCity = yPos > 34 || (this.flashKind === 'launch' && this.temporalFlash > 0.45);
+    this.avenue.group.visible = !hideCity;
+    this.archGroup.visible = !hideCity;
 
     const spaceFactor = THREE.MathUtils.clamp((yPos - 5) / 55 + (-442 - zPos) / 35, 0, 1);
 
     this.renderer.info.reset();
-    this.vehicle.update(dt, this.input, this.autoCruise, slowdownFactor);
+    this.vehicle.update(dt, this.input, this.autoCruise, slowdownFactor, this.temporalFlash);
     this.updateCamera(dt);
     this.avenue.update(this.elapsedTime);
     this.envSystem.update(this.elapsedTime, this.vehicle.position);
@@ -693,6 +712,7 @@ export class WorldSceneEngine {
       duskDepth: this.duskDepth,
       activeStation: this.activeStation,
       temporalFlash: Math.round(this.temporalFlash * 100) / 100,
+      flashKind: this.flashKind,
       spaceFactor: Math.round(spaceFactor * 100) / 100,
     });
   }

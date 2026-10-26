@@ -94,8 +94,13 @@ export default function App() {
     duskDepth: 0.25,
     activeStation: null,
     temporalFlash: 0,
+    flashKind: null,
     spaceFactor: 0,
   });
+
+  const debugMode =
+    typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).has('debug');
 
   useEffect(() => {
     const el = containerRef.current;
@@ -155,7 +160,9 @@ export default function App() {
         >
           <div className="w-full h-full flex flex-col items-center justify-center">
             <div className="px-4 py-1.5 rounded-full bg-sky-500/20 border border-sky-300/60 text-sky-100 font-mono text-xs tracking-[0.3em] uppercase shadow-[0_0_40px_rgba(56,189,248,0.8)]">
-              88 MPH TEMPORAL DISPLACEMENT // ENTERING MODERN ERA
+              {telemetry.flashKind === 'launch'
+                ? 'IGNITION // BEYOND THE HORIZON'
+                : '88 MPH // TEMPORAL JUMP'}
             </div>
           </div>
         </div>
@@ -544,10 +551,14 @@ export default function App() {
                   <span className="text-slate-400">
                     {telemetry.yPos > 5 ? `ALT: ${telemetry.yPos}m` : `Z: ${telemetry.zPos}m`}
                   </span>
-                  <span className="text-emerald-400">{telemetry.fps} FPS</span>
-                  <span className="hidden lg:inline text-slate-500">
-                    {telemetry.drawCalls} DC · {(telemetry.triangles / 1e6).toFixed(1)}M△
-                  </span>
+                  {debugMode && (
+                    <>
+                      <span className="text-emerald-400">{telemetry.fps} FPS</span>
+                      <span className="hidden lg:inline text-slate-500">
+                        {telemetry.drawCalls} DC · {(telemetry.triangles / 1e6).toFixed(1)}M△
+                      </span>
+                    </>
+                  )}
                 </div>
               </div>
             </div>
