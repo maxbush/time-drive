@@ -197,7 +197,7 @@ export class WorldSceneEngine {
   private dprTimer = 0;
   private viewW = 1;
   private viewH = 1;
-  private dprCap = 1.6;
+  private dprCap = 2.0; // governor steps this down on weak hardware anyway
   private qualityTier = 0; // 0 full → 1 low-DPR → 2 no reflection → 3 no bloom
   private lowStreak = 0;
   private reflectionDisabled = false;
@@ -226,7 +226,7 @@ export class WorldSceneEngine {
     const height = Math.max(1, container.clientHeight);
     this.viewW = width;
     this.viewH = height;
-    const pixelRatio = Math.min(window.devicePixelRatio || 1, 1.6);
+    const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
     this.currentDpr = pixelRatio;
 
     this.renderer = new THREE.WebGLRenderer({

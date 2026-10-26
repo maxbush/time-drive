@@ -388,7 +388,22 @@ export class ArchitectureBuilder {
     }
 
     if (this.windowQuads.length > 0) {
-      const count = this.windowQuads.length;
+      // Z-chunked window meshes: tight bounds let frustum culling drop whole
+      // street stretches; layer 1 keeps this heavy shader out of reflections.
+      const WIN_CHUNK = 80;
+      const winChunks = new Map<number, WindowQuadSpec[]>();
+      for (const q of this.windowQuads) {
+        const key = Math.floor(q.center.z / WIN_CHUNK);
+        const arr = winChunks.get(key) ?? [];
+        arr.push(q);
+        winChunks.set(key, arr);
+      }
+
+      const up = new THREE.Vector3(0, 1, 0);
+      const tmp = new THREE.Vector3();
+
+      for (const quads of winChunks.values()) {
+      const count = quads.length;
       const positions = new Float32Array(count * 4 * 3);
       const normals = new Float32Array(count * 4 * 3);
       const uvs = new Float32Array(count * 4 * 2);
@@ -397,11 +412,8 @@ export class ArchitectureBuilder {
       const blindDrops = new Float32Array(count * 4);
       const indices = new Uint32Array(count * 6);
 
-      const up = new THREE.Vector3(0, 1, 0);
-      const tmp = new THREE.Vector3();
-
       for (let i = 0; i < count; i++) {
-        const q = this.windowQuads[i];
+        const q = quads[i];
         const hw = q.width * 0.5;
         const hh = q.height * 0.5;
 
@@ -461,7 +473,9 @@ export class ArchitectureBuilder {
       winGeo.computeBoundingSphere();
 
       const winMesh = new THREE.Mesh(winGeo, palette.upperWindowInterior);
+      winMesh.layers.set(1);
       root.add(winMesh);
+      }
     }
 
     root.add(this.extraGroup);

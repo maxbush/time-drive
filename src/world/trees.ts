@@ -127,7 +127,9 @@ export function loadAndPlaceElmTrees(
           let finalLeafMat: THREE.Material;
           if (mats.leafMat instanceof THREE.MeshStandardMaterial) {
             finalLeafMat = mats.leafMat.clone();
-            (finalLeafMat as THREE.MeshStandardMaterial).alphaTest = 0.35;
+            (finalLeafMat as THREE.MeshStandardMaterial).alphaTest = 0.45;
+            (finalLeafMat as THREE.MeshStandardMaterial).transparent = false;
+            (finalLeafMat as THREE.MeshStandardMaterial).depthWrite = true;
             (finalLeafMat as THREE.MeshStandardMaterial).side = THREE.DoubleSide;
             (finalLeafMat as THREE.MeshStandardMaterial).roughness = 0.78;
           } else {
