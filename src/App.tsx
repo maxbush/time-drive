@@ -71,6 +71,8 @@ export default function App() {
   const [hudVisible, setHudVisible] = useState(true);
   const [loading, setLoading] = useState(true);
   const [loadPct, setLoadPct] = useState(0);
+  const flashRef = useRef<HTMLDivElement>(null);
+  const flashLabelRef = useRef<HTMLDivElement>(null);
   const [demoModalOpen, setDemoModalOpen] = useState(false);
   const [demoSubject, setDemoSubject] = useState('Обсудить проект / Запросить демо');
   const [formSent, setFormSent] = useState(false);
@@ -116,6 +118,13 @@ export default function App() {
     );
     engineRef.current = engine;
     engine.ready.then(() => setLoading(false));
+    engine.onFlash = (v, kind) => {
+      if (flashRef.current) flashRef.current.style.opacity = String(v);
+      if (flashLabelRef.current && kind) {
+        flashLabelRef.current.textContent =
+          kind === 'launch' ? 'IGNITION // BEYOND THE HORIZON' : '88 MPH // TEMPORAL JUMP';
+      }
+    };
 
     const onKey = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName;
@@ -177,31 +186,32 @@ export default function App() {
         </div>
       </div>
 
-      {/* 88 MPH Temporal Flash & Atmospheric Smoke Transition Overlay (Past -> Present) */}
-      {telemetry.temporalFlash > 0.02 && (
-        <div
-          className="fixed inset-0 z-10 pointer-events-none transition-opacity duration-75"
-          style={{
-            opacity: telemetry.temporalFlash,
-            background:
-              'radial-gradient(circle at 50% 50%, rgba(224,242,254,0.92) 0%, rgba(56,189,248,0.58) 38%, rgba(15,23,42,0.85) 85%)',
-          }}
-        >
-          <div className="w-full h-full flex flex-col items-center justify-center">
-            <div className="px-4 py-1.5 rounded-full bg-sky-500/20 border border-sky-300/60 text-sky-100 font-mono text-xs tracking-[0.3em] uppercase shadow-[0_0_40px_rgba(56,189,248,0.8)]">
-              {telemetry.flashKind === 'launch'
-                ? 'IGNITION // BEYOND THE HORIZON'
-                : '88 MPH // TEMPORAL JUMP'}
-            </div>
+      {/* 88 MPH Temporal Flash — opacity driven per-frame via ref (no React
+          re-render), so the ramp is smooth instead of 8Hz telemetry steps */}
+      <div
+        ref={flashRef}
+        className="fixed inset-0 z-10 pointer-events-none"
+        style={{
+          opacity: 0,
+          background:
+            'radial-gradient(circle at 50% 50%, rgba(224,242,254,0.92) 0%, rgba(56,189,248,0.58) 38%, rgba(15,23,42,0.85) 85%)',
+        }}
+      >
+        <div className="w-full h-full flex flex-col items-center justify-center">
+          <div
+            ref={flashLabelRef}
+            className="px-4 py-1.5 rounded-full bg-sky-500/20 border border-sky-300/60 text-sky-100 font-mono text-xs tracking-[0.3em] uppercase shadow-[0_0_40px_rgba(56,189,248,0.8)]"
+          >
+            88 MPH // TEMPORAL JUMP
           </div>
         </div>
-      )}
+      </div>
 
       {/* Minimal Toggle Pill when HUD is hidden */}
       {!hudVisible && (
         <button
           onClick={() => setHudVisible(true)}
-          className="fixed top-4 right-4 z-30 px-3.5 py-1.5 rounded-full bg-slate-950/75 border border-white/15 text-xs font-medium tracking-wider text-slate-200 backdrop-blur-md hover:border-amber-400/50 transition"
+          className="fixed top-4 right-4 z-30 px-3.5 py-1.5 rounded-full bg-slate-950/75 border border-white/15 text-xs font-medium tracking-wider text-slate-200 hover:border-amber-400/50 transition"
         >
           SHOW HUD [H]
         </button>
@@ -209,7 +219,7 @@ export default function App() {
 
       {/* DESIGNER PROJECT BRIEF CARD (Automatically unfolds when car slows down at Station 1, 2, or 3!) */}
       {hudVisible && activeBrief && !demoModalOpen && (
-        <aside className="fixed right-6 top-20 bottom-28 z-20 w-full max-w-[440px] flex flex-col justify-between rounded-2xl bg-slate-950/82 border border-white/15 p-6 backdrop-blur-xl shadow-[0_24px_80px_rgba(0,0,0,0.75)] overflow-y-auto pointer-events-auto">
+        <aside className="fixed right-6 top-20 bottom-28 z-20 w-full max-w-[440px] flex flex-col justify-between rounded-2xl bg-slate-950/82 border border-white/15 p-6 shadow-[0_24px_80px_rgba(0,0,0,0.75)] overflow-y-auto pointer-events-auto">
           <div>
             <div className="flex items-center justify-between gap-2">
               <span className="px-2.5 py-1 rounded-md bg-amber-400/15 border border-amber-400/40 text-amber-300 font-mono text-[10px] tracking-widest uppercase">
@@ -301,7 +311,7 @@ export default function App() {
 
       {/* ACT III: SPACE FINALE SLOGAN & CONTACT FORM OVERLAY (When flying 90° up among the stars!) */}
       {hudVisible && (telemetry.activeStation === 'space' || demoModalOpen) && (
-        <div className="fixed inset-0 z-30 flex items-center justify-center p-4 bg-slate-950/55 backdrop-blur-md pointer-events-auto">
+        <div className="fixed inset-0 z-30 flex items-center justify-center p-4 bg-slate-950/55 pointer-events-auto">
           <div className="w-full max-w-lg rounded-2xl bg-slate-950/90 border border-sky-400/35 p-7 shadow-[0_0_90px_rgba(56,189,248,0.25)]">
             <div className="flex items-center justify-between">
               <span className="px-3 py-1 rounded-full bg-sky-500/15 border border-sky-400/40 text-sky-300 font-mono text-[11px] tracking-widest uppercase">
@@ -438,7 +448,7 @@ export default function App() {
             <div className="flex items-center gap-2 pointer-events-auto">
 
               {/* Camera Mode Switcher */}
-              <div className="flex items-center rounded-lg bg-slate-900/80 border border-white/10 p-0.5 backdrop-blur-md">
+              <div className="flex items-center rounded-lg bg-slate-900/80 border border-white/10 p-0.5">
                 {(
                   [
                     { id: 'chase', label: 'Chase' },
@@ -461,7 +471,7 @@ export default function App() {
               </div>
 
               {/* Atmosphere / Night Depth Toggle */}
-              <div className="hidden md:flex items-center gap-2 px-3 py-1 rounded-lg bg-slate-900/80 border border-white/10 backdrop-blur-md">
+              <div className="hidden md:flex items-center gap-2 px-3 py-1 rounded-lg bg-slate-900/80 border border-white/10">
                 <span className="text-[11px] font-mono text-slate-400 uppercase">Dusk/Night</span>
                 <input
                   type="range"
@@ -483,7 +493,7 @@ export default function App() {
 
               <button
                 onClick={() => setHudVisible(false)}
-                className="px-2.5 py-1 rounded-lg bg-slate-900/80 border border-white/10 text-xs text-slate-400 hover:text-white backdrop-blur-md cursor-pointer"
+                className="px-2.5 py-1 rounded-lg bg-slate-900/80 border border-white/10 text-xs text-slate-400 hover:text-white cursor-pointer"
                 title="Hide UI (H)"
               >
                 Hide [H]
@@ -501,7 +511,7 @@ export default function App() {
                     <button
                       key={zone.id}
                       onClick={() => engineRef.current?.jumpToZone(zone.id)}
-                      className={`text-left px-3 py-2 rounded-lg border backdrop-blur-md transition cursor-pointer ${
+                      className={`text-left px-3 py-2 rounded-lg border transition cursor-pointer ${
                         active
                           ? 'bg-amber-500/20 border-amber-400/70 text-white shadow-[0_0_20px_rgba(245,158,11,0.2)]'
                           : 'bg-slate-900/70 border-white/10 text-slate-300 hover:border-white/25 hover:bg-slate-900/90'
@@ -517,7 +527,7 @@ export default function App() {
                 })}
               </div>
 
-              <div className="flex flex-wrap items-center justify-between gap-4 px-3.5 py-2 rounded-lg bg-slate-900/80 border border-white/10 backdrop-blur-md text-xs">
+              <div className="flex flex-wrap items-center justify-between gap-4 px-3.5 py-2 rounded-lg bg-slate-900/80 border border-white/10 text-xs">
                 <div className="flex items-center gap-4">
                   <button
                     onClick={() => engineRef.current?.toggleAutoCruise()}

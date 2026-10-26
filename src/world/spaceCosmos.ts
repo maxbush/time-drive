@@ -24,6 +24,11 @@ export function createSpaceCosmos(scene: THREE.Scene): SpaceCosmosSystem {
 
   const streakInst = new THREE.InstancedMesh(streakGeo, streakMat, streakCount);
   streakInst.frustumCulled = false;
+  // Init instanceColor eagerly — lazy creation on first setColorAt would force
+  // a shader recompile right on the first space frame (visible hitch).
+  const tmpCol = new THREE.Color(0.7, 0.85, 1.0);
+  for (let i = 0; i < streakCount; i++) streakInst.setColorAt(i, tmpCol);
+  if (streakInst.instanceColor) streakInst.instanceColor.needsUpdate = true;
   group.add(streakInst);
 
   const streakSeeds: Array<{ x: number; y: number; z: number; speed: number; len: number; warm: boolean }> = [];

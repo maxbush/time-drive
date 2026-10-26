@@ -201,6 +201,9 @@ export class WorldSceneEngine {
   private qualityTier = 0; // 0 full → 1 low-DPR → 2 no reflection → 3 no bloom
   private lowStreak = 0;
   private reflectionDisabled = false;
+  private spaceDprDropped = false;
+  private cityHidden = false;
+  public onFlash?: (v: number, kind: 'jump' | 'launch' | null) => void;
 
   private animFrameId = 0;
   private lastPerfTime = performance.now();
@@ -571,7 +574,7 @@ export class WorldSceneEngine {
   }
 
   private updatePlanarReflection() {
-    if (this.vehicle.position.y > 12 || this.vehicle.position.z < -420 || this.reflectionDisabled) return;
+    if (this.vehicle.position.y > 12 || this.vehicle.position.z < -435 || this.reflectionDisabled) return;
     this.camera.updateMatrixWorld();
 
     const camPos = new THREE.Vector3();
@@ -683,14 +686,25 @@ export class WorldSceneEngine {
     // Space approach: strip the expensive passes BEFORE the launch, not at it.
     // Past z≈-435 the city is behind the camera anyway — hide world, kill the
     // planar reflection, and cap pixel ratio so the ring flight stays smooth.
-    const spaceApproach = zPos < -420 || yPos > 8;
-    const hideCity = yPos > 16 || zPos < -435 || (this.flashKind === 'launch' && this.temporalFlash > 0.45);
-    this.avenue.group.visible = !hideCity;
-    this.archGroup.visible = !hideCity;
-    if (spaceApproach && this.currentDpr > 1.3) {
-      this.currentDpr = Math.max(1.3, this.currentDpr - dt * 1.2);
-      this.renderer.setPixelRatio(this.currentDpr);
-      this.composer.setPixelRatio(this.currentDpr);
+    this.onFlash?.(this.temporalFlash, this.flashKind);
+
+    // Hide the detailed city only once the launch flash covers the screen
+    // (or the car is already high) — hides once, restores only back on ground.
+    if (!this.cityHidden && (yPos > 16 || (this.flashKind === 'launch' && this.temporalFlash > 0.5))) {
+      this.cityHidden = true;
+    } else if (this.cityHidden && yPos < 10 && zPos > -420) {
+      this.cityHidden = false;
+    }
+    this.avenue.group.visible = !this.cityHidden;
+    this.archGroup.visible = !this.cityHidden;
+
+    // Single stepped DPR drop well before the ring — one buffer realloc on
+    // the plain road instead of a per-frame slide during the flash.
+    if (zPos < -385 && !this.spaceDprDropped) {
+      this.spaceDprDropped = true;
+      this.setDpr(1.3);
+    } else if (zPos > -400 && this.spaceDprDropped) {
+      this.spaceDprDropped = false;
     }
 
     const spaceFactor = THREE.MathUtils.clamp((yPos - 5) / 55 + (-442 - zPos) / 35, 0, 1);
@@ -730,7 +744,7 @@ export class WorldSceneEngine {
 
     // Adaptive resolution: scale pixel ratio to hold ~60fps.
     this.dprTimer += dt;
-    if (this.dprTimer >= 2 && this.frameCounter > 30) {
+    if (this.dprTimer >= 2 && this.frameCounter > 30 && !this.spaceDprDropped) {
       this.dprTimer = 0;
       const maxDpr = Math.min(window.devicePixelRatio || 1, this.dprCap);
       const DPR_STEPS = [1.0, 1.25, 1.5, 2.0];
@@ -741,17 +755,7 @@ export class WorldSceneEngine {
       } else if (this.currentFps > 57 && cur < maxDpr) {
         next = Math.min(maxDpr, DPR_STEPS[Math.min(DPR_STEPS.length - 1, DPR_STEPS.indexOf(cur) + 1)]);
       }
-      if (next !== this.currentDpr) {
-        this.currentDpr = next;
-        this.renderer.setPixelRatio(next);
-        this.composer.setPixelRatio(next);
-        this.renderer.setSize(this.viewW, this.viewH);
-        this.composer.setSize(this.viewW, this.viewH);
-        this.reflectRT.setSize(
-          Math.max(256, Math.floor(this.viewW * next * 0.5)),
-          Math.max(256, Math.floor(this.viewH * next * 0.5))
-        );
-      }
+      this.setDpr(next);
 
       // Quality governor: ~4s of sustained low FPS steps the scene down a tier
       this.lowStreak = this.currentFps < 42 ? this.lowStreak + 1 : 0;
@@ -843,6 +847,23 @@ export class WorldSceneEngine {
       );
     }
   };
+
+  // Single place that actually resizes renderer/composer/RT — every DPR change
+  // routes through here so buffers are reallocated exactly once per step.
+  private setDpr(next: number) {
+    next = Math.min(next, this.dprCap, window.devicePixelRatio || 1);
+    if (Math.abs(next - this.currentDpr) < 0.01) return;
+    this.currentDpr = next;
+    this.renderer.setPixelRatio(next);
+    this.composer.setPixelRatio(next);
+    this.renderer.setSize(this.viewW, this.viewH);
+    this.composer.setSize(this.viewW, this.viewH);
+    this.bloomPass.setSize(this.viewW, this.viewH);
+    this.reflectRT.setSize(
+      Math.max(256, Math.floor(this.viewW * next * 0.5)),
+      Math.max(256, Math.floor(this.viewH * next * 0.5))
+    );
+  }
 
   private handleResize = () => {
     if (this.disposed) return;
