@@ -117,9 +117,23 @@ export function createVehicleController(
   tailMatL.position.set(-0.95, 1.28, 3.62);
   tailMatR.position.set(0.95, 1.28, 3.62);
   root.add(tailMatL, tailMatR);
-  const tailLight = new THREE.PointLight('#ff2c14', 3.5, 11, 1.8);
-  tailLight.position.set(0, 1.3, 3.85);
-  root.add(tailLight);
+
+  // Glowing lens elements inside the headlamps (visible even where beams aren't)
+  const lensMat = new THREE.MeshStandardMaterial({
+    color: new THREE.Color('#0a0e14'),
+    emissive: new THREE.Color('#cfe6ff'),
+    emissiveIntensity: 3.2,
+    roughness: 0.25,
+    metalness: 0.4,
+  });
+  const lensGeo = new THREE.CircleGeometry(0.11, 20);
+  for (const lx of [-1.05, -0.62, 0.62, 1.05]) {
+    const lens = new THREE.Mesh(lensGeo, lensMat);
+    lens.rotation.y = Math.PI; // face forward (-Z)
+    lens.position.set(lx, 1.02, -3.64);
+    lens.layers.set(1);
+    root.add(lens);
+  }
 
   // (fire-trail exhaust particles removed — FX to be redesigned)
 
@@ -161,32 +175,54 @@ export function createVehicleController(
     const carBox = new THREE.Box3().setFromObject(group);
     const carSize = carBox.getSize(new THREE.Vector3());
     const carC = carBox.getCenter(new THREE.Vector3());
-    const candidates: { mesh: THREE.Mesh; c: THREE.Vector3; r: number }[] = [];
+    const wheelMeshes: { mesh: THREE.Mesh; c: THREE.Vector3; r: number }[] = [];
+    const meshes: { mesh: THREE.Mesh; b: THREE.Box3 }[] = [];
     group.traverse((o) => {
-      if (!(o instanceof THREE.Mesh)) return;
-      const b = new THREE.Box3().setFromObject(o);
-      const s = b.getSize(new THREE.Vector3());
-      const c = b.getCenter(new THREE.Vector3());
-      const low = c.y - carBox.min.y < 0.5 * carSize.y;
-      const outX = Math.abs(c.x - carC.x) > carSize.x * 0.2;
-      const outZ = Math.abs(c.z - carC.z) > carSize.z * 0.2;
-      const roundish = s.y > 0.3 && Math.abs(s.y - s.z) / s.y < 0.45 && s.x < s.y * 0.8;
-      if (low && outX && outZ && roundish && candidates.length < 8) {
-        candidates.push({ mesh: o, c, r: s.y / 2 });
-      }
+      if (o instanceof THREE.Mesh) meshes.push({ mesh: o, b: new THREE.Box3().setFromObject(o) });
     });
-    for (const { mesh, c, r } of candidates) {
+    // Expected wheel-well positions: four corners just above the ground
+    for (const sx of [-1, 1]) {
+      for (const sz of [-1, 1]) {
+        const ex = carC.x + sx * carSize.x * 0.36;
+        const ez = carC.z + sz * carSize.z * 0.33;
+        let best: { mesh: THREE.Mesh; b: THREE.Box3 } | null = null;
+        let bestD = Infinity;
+        for (const m of meshes) {
+          const s = m.b.getSize(new THREE.Vector3());
+          const c = m.b.getCenter(new THREE.Vector3());
+          if (c.y - carBox.min.y > 0.55) continue;
+          if (Math.max(s.x, s.y, s.z) > 1.4) continue;
+          const d = (c.x - ex) ** 2 + (c.z - ez) ** 2;
+          if (d < bestD) {
+            bestD = d;
+            best = m;
+          }
+        }
+        if (best && !wheelMeshes.some((w) => w.mesh === best!.mesh)) {
+          const b2 = best.b;
+          wheelMeshes.push({ mesh: best.mesh, c: b2.getCenter(new THREE.Vector3()), r: b2.getSize(new THREE.Vector3()).y / 2 });
+        }
+      }
+    }
+    const worldLateral = new THREE.Vector3(1, 0, 0);
+    for (const { mesh, c, r } of wheelMeshes) {
       const parent = mesh.parent!;
       const pivot = new THREE.Group();
       parent.add(pivot);
       parent.updateMatrixWorld(true);
       pivot.position.copy(parent.worldToLocal(c.clone()));
       pivot.attach(mesh);
-      pivot.userData.r = r;
+      // Resolve the spin axis ONCE in pivot-local space — recomputing it per
+      // frame against the already-rotated matrix makes wheels never turn.
+      pivot.updateMatrixWorld(true);
+      const axis = worldLateral
+        .clone()
+        .transformDirection(pivot.matrixWorld.clone().invert())
+        .normalize();
+      pivot.userData.ax = axis;
       wheelPivots.push({ pivot, r });
     }
   };
-  const spinLateral = new THREE.Vector3();
   const spinAxis = new THREE.Vector3();
 
   const loadCarModel = (id: CarModelId) => {
@@ -382,7 +418,6 @@ export function createVehicleController(
       const tailHot = 0.5 + brakeGlow * 0.5 + (pitchAngle > 0.05 ? 0.35 : 0);
       (tailMatL.material as THREE.SpriteMaterial).opacity = Math.min(1, tailHot);
       (tailMatR.material as THREE.SpriteMaterial).opacity = Math.min(1, tailHot);
-      tailLight.intensity = 3.5 + brakeGlow * 18 + (pitchAngle > 0.05 ? 6 : 0);
       prevSpeed = speed;
 
       // --- Headlight dynamics: subtle boost surge + beam flicker ---------------
@@ -395,11 +430,8 @@ export function createVehicleController(
 
       // Wheel spin — re-pivoted hubs rotate about the car's lateral axis
       if (wheelPivots.length && Math.abs(speed) > 0.05) {
-        spinLateral.set(Math.cos(heading), 0, -Math.sin(heading));
         for (const { pivot, r } of wheelPivots) {
-          pivot.updateWorldMatrix(true, false);
-          spinAxis.copy(spinLateral).transformDirection(pivot.matrixWorld.clone().invert());
-          pivot.rotateOnAxis(spinAxis, (-speed * dt) / r);
+          pivot.rotateOnAxis(pivot.userData.ax, (-speed * dt) / r);
         }
       }
 
