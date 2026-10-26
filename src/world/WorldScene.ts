@@ -536,7 +536,7 @@ export class WorldSceneEngine {
   }
 
   private updatePlanarReflection() {
-    if (this.vehicle.position.y > 12) return;
+    if (this.vehicle.position.y > 12 || this.vehicle.position.z < -420) return;
     this.camera.updateMatrixWorld();
 
     const camPos = new THREE.Vector3();
@@ -645,12 +645,18 @@ export class WorldSceneEngine {
       1 - Math.exp(-(flashTarget > this.temporalFlash ? 14 : 6) * dt)
     );
 
-    // Hide the detailed city as soon as the car enters the space approach or
-    // climbs — camera looks up anyway, and this kills the whole-world draw
-    // that caused the launch hitch.
-    const hideCity = yPos > 16 || zPos < -430 || (this.flashKind === 'launch' && this.temporalFlash > 0.45);
+    // Space approach: strip the expensive passes BEFORE the launch, not at it.
+    // Past z≈-435 the city is behind the camera anyway — hide world, kill the
+    // planar reflection, and cap pixel ratio so the ring flight stays smooth.
+    const spaceApproach = zPos < -420;
+    const hideCity = yPos > 16 || zPos < -435 || (this.flashKind === 'launch' && this.temporalFlash > 0.45);
     this.avenue.group.visible = !hideCity;
     this.archGroup.visible = !hideCity;
+    if (spaceApproach && this.currentDpr > 1.5) {
+      this.currentDpr = Math.max(1.35, this.currentDpr - dt * 0.9);
+      this.renderer.setPixelRatio(this.currentDpr);
+      this.composer.setPixelRatio(this.currentDpr);
+    }
 
     const spaceFactor = THREE.MathUtils.clamp((yPos - 5) / 55 + (-442 - zPos) / 35, 0, 1);
 
