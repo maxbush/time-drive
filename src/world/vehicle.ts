@@ -118,22 +118,7 @@ export function createVehicleController(
   tailMatR.position.set(0.95, 1.28, 3.62);
   root.add(tailMatL, tailMatR);
 
-  // Glowing lens elements inside the headlamps (visible even where beams aren't)
-  const lensMat = new THREE.MeshStandardMaterial({
-    color: new THREE.Color('#0a0e14'),
-    emissive: new THREE.Color('#dceeff'),
-    emissiveIntensity: 2.1,
-    roughness: 0.25,
-    metalness: 0.4,
-  });
-  const lensGeo = new THREE.CircleGeometry(0.13, 20);
-  for (const lx of [-1.05, -0.62, 0.62, 1.05]) {
-    const lens = new THREE.Mesh(lensGeo, lensMat);
-    lens.rotation.y = Math.PI; // face forward (-Z)
-    lens.position.set(lx, 1.02, -3.78); // proud of the body so they don't sink inside
-    lens.layers.set(1);
-    root.add(lens);
-  }
+  // (no fake lens discs — the GLB's own LightEmissive lamps are driven instead)
 
   // (fire-trail exhaust particles removed — FX to be redesigned)
 
@@ -259,7 +244,8 @@ export function createVehicleController(
                     m.opacity = 0.85;
                   }
                   if (m.name && m.name.includes('LightEmissive')) {
-                    m.emissiveIntensity = 0.65;
+                    m.emissive.setRGB(0.85, 0.92, 1.0);
+                    m.emissiveIntensity = 3.0;
                     m.depthWrite = true;
                   }
                   if (m.name === 'red_glas') {
