@@ -228,7 +228,7 @@ export function createVehicleController(
 
         model.traverse((obj) => {
           if (obj instanceof THREE.Mesh) {
-            obj.castShadow = true;
+            obj.castShadow = false; // lowpoly proxy casts the shadow instead
             obj.receiveShadow = true;
             if (obj.material) {
               const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
@@ -279,6 +279,30 @@ export function createVehicleController(
   };
 
   loadCarModel('bttf');
+
+  // Lowpoly twin for the shadow map: writes nothing to the framebuffer
+  // (colorWrite/depthWrite off) but casts the real directional shadow —
+  // ~15% of the triangles per shadow pass.
+  loader.load('./models/bttf_delorean_shadow.glb', (gltf) => {
+    const model = gltf.scene;
+    const bounds = new THREE.Box3().setFromObject(model);
+    const size = bounds.getSize(new THREE.Vector3());
+    const center = bounds.getCenter(new THREE.Vector3());
+    const scale = 7.2 / Math.max(size.x, size.z, 0.001);
+    model.scale.multiplyScalar(scale);
+    model.position.set(-center.x * scale, -bounds.min.y * scale + 0.06, -center.z * scale);
+    const ghost = new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false });
+    model.traverse((obj) => {
+      if (obj instanceof THREE.Mesh) {
+        obj.castShadow = true;
+        obj.material = ghost;
+      }
+    });
+    const wrapper = new THREE.Group();
+    wrapper.add(model);
+    wrapper.rotation.y = (size.x > size.z ? Math.PI / 2 : 0) + Math.PI;
+    chassis.add(wrapper);
+  });
 
   let heading = 0;
   let pitchAngle = 0; // 0 on road, smoothly rotates up to +Math.PI/2 (90 degrees straight up!) in Act III Space Launch
