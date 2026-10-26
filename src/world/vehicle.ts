@@ -120,28 +120,7 @@ export function createVehicleController(
   tailLight.position.set(0, 1.3, 3.85);
   root.add(tailLight);
 
-  // Exhaust / time-jump flame trail particle pool (BTTF fire trails)
-  const P_COUNT = 240;
-  const pPos = new Float32Array(P_COUNT * 3);
-  const pVel = new Float32Array(P_COUNT * 3);
-  const pLife = new Float32Array(P_COUNT);
-  const pLifeMax = new Float32Array(P_COUNT);
-  const pCol = new Float32Array(P_COUNT * 3);
-  const pGeo = new THREE.BufferGeometry();
-  pGeo.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
-  pGeo.setAttribute('color', new THREE.BufferAttribute(pCol, 3));
-  const pMat = new THREE.PointsMaterial({
-    size: 1.4,
-    map: glowTex,
-    vertexColors: true,
-    transparent: true,
-    blending: THREE.AdditiveBlending,
-    depthWrite: false,
-    sizeAttenuation: true,
-  });
-  const exhaust = new THREE.Points(pGeo, pMat);
-  exhaust.frustumCulled = false;
-  scene.add(exhaust);
+  // (fire-trail exhaust particles removed — FX to be redesigned)
 
   const loader = new GLTFLoader();
   const loadedModels = new Map<CarModelId, THREE.Group>();
@@ -248,9 +227,6 @@ export function createVehicleController(
   let brakeGlow = 0;
   let exhaustTime = 0;
   const prevPos = new THREE.Vector3();
-  const carVel = new THREE.Vector3();
-  const emitA = new THREE.Vector3();
-  const emitB = new THREE.Vector3();
   const tmpV = new THREE.Vector3();
 
   return {
@@ -377,50 +353,6 @@ export function createVehicleController(
       headL.target.updateMatrixWorld();
       headR.target.updateMatrixWorld();
 
-      // --- Space-flight dynamics: heat glow + BTTF fire-trail exhaust ----------
-      const flightFactor = THREE.MathUtils.clamp(pitchAngle / 1.2, 0, 1);
-      const boosting = input.boost && Math.abs(speed) > 28;
-      const emitting = flightFactor > 0.02 || boosting;
-
-      carVel.copy(root.position).sub(prevPos).divideScalar(Math.max(dt, 0.001));
-      prevPos.copy(root.position);
-
-      root.updateMatrixWorld();
-      emitA.set(-1.05, 0.32, 3.55).applyMatrix4(root.matrixWorld);
-      emitB.set(1.05, 0.32, 3.55).applyMatrix4(root.matrixWorld);
-
-      for (let i = 0; i < P_COUNT; i++) {
-        const i3 = i * 3;
-        if (pLife[i] > 0) {
-          pLife[i] -= dt;
-          pVel[i3 + 1] -= 7.5 * dt;
-          const drag = 1 - Math.min(0.9, 1.1 * dt);
-          pVel[i3] *= drag;
-          pVel[i3 + 1] *= drag;
-          pVel[i3 + 2] *= drag;
-          pPos[i3] += pVel[i3] * dt;
-          pPos[i3 + 1] += pVel[i3 + 1] * dt;
-          pPos[i3 + 2] += pVel[i3 + 2] * dt;
-          const heat = Math.max(0, pLife[i] / pLifeMax[i]);
-          pCol[i3] = 0.15 + 2.4 * heat;
-          pCol[i3 + 1] = 0.12 + 1.35 * heat * heat;
-          pCol[i3 + 2] = 0.05 + 0.5 * heat * heat * heat;
-        } else {
-          pCol[i3] = pCol[i3 + 1] = pCol[i3 + 2] = 0;
-          if (emitting && Math.random() < (0.55 + flightFactor * 0.45)) {
-            const e = i % 2 === 0 ? emitA : emitB;
-            pPos[i3] = e.x + (Math.random() - 0.5) * 0.35;
-            pPos[i3 + 1] = e.y + (Math.random() - 0.5) * 0.25;
-            pPos[i3 + 2] = e.z + (Math.random() - 0.5) * 0.35;
-            pVel[i3] = -carVel.x * 0.45 + (Math.random() - 0.5) * 5.5;
-            pVel[i3 + 1] = -carVel.y * 0.45 - (2.5 + Math.random() * 5.5);
-            pVel[i3 + 2] = -carVel.z * 0.45 + (Math.random() - 0.5) * 5.5;
-            pLifeMax[i] = pLife[i] = 0.45 + Math.random() * 0.8;
-          }
-        }
-      }
-      pGeo.attributes.position.needsUpdate = true;
-      pGeo.attributes.color.needsUpdate = true;
     },
   };
 }

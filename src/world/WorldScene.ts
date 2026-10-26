@@ -645,8 +645,10 @@ export class WorldSceneEngine {
       1 - Math.exp(-(flashTarget > this.temporalFlash ? 14 : 6) * dt)
     );
 
-    // Hide the detailed city while flying high — flash masks the pop-out.
-    const hideCity = yPos > 34 || (this.flashKind === 'launch' && this.temporalFlash > 0.45);
+    // Hide the detailed city as soon as the car enters the space approach or
+    // climbs — camera looks up anyway, and this kills the whole-world draw
+    // that caused the launch hitch.
+    const hideCity = yPos > 16 || zPos < -430 || (this.flashKind === 'launch' && this.temporalFlash > 0.45);
     this.avenue.group.visible = !hideCity;
     this.archGroup.visible = !hideCity;
 
