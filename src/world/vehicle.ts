@@ -2,12 +2,10 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 
-export type CarModelId = 'bttf' | 'alpha5' | 'rimac';
+export type CarModelId = 'bttf';
 
 const CAR_FILES: Record<CarModelId, string> = {
   bttf: './models/bttf_delorean_mobile.glb',
-  alpha5: './models/delorean_alpha5.glb',
-  rimac: './models/rimac_concept_one.glb',
 };
 
 export interface VehicleController {
@@ -251,7 +249,7 @@ export function createVehicleController(
                   if (m.name === 'red_glas') {
                     m.emissiveIntensity = 0.85;
                   }
-                  if (id === 'alpha5' && m.metalness < 0.3 && m.roughness > 0.6) {
+                  if (m.metalness < 0.3 && m.roughness > 0.6) {
                     m.metalness = 0.82;
                     m.roughness = 0.22;
                   }

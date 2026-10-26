@@ -206,6 +206,7 @@ export class WorldSceneEngine {
   private lastPerfTime = performance.now();
   private elapsedTime = 0;
   private frameCounter = 0;
+  private fpsFrames = 0;
   private fpsAccum = 0;
   private currentFps = 60;
   private disposed = false;
@@ -311,7 +312,7 @@ export class WorldSceneEngine {
     this.composer.addPass(new RenderPass(this.scene, this.camera));
 
     this.bloomPass = new UnrealBloomPass(
-      new THREE.Vector2(Math.floor(width * 0.5), Math.floor(height * 0.5)),
+      new THREE.Vector2(width, height), // composer.setSize governs actual res; internal mip0 is already half
       0.28,
       0.48,
       0.96
@@ -713,10 +714,11 @@ export class WorldSceneEngine {
     this.composer.render();
 
     this.frameCounter++;
+    this.fpsFrames++;
     this.fpsAccum += dt;
     if (this.fpsAccum >= 0.12) {
-      this.currentFps = Math.round(this.frameCounter / this.fpsAccum);
-      this.frameCounter = 0;
+      this.currentFps = Math.round(this.fpsFrames / this.fpsAccum);
+      this.fpsFrames = 0;
       this.fpsAccum = 0;
       this.emitTelemetry();
     }
@@ -726,11 +728,13 @@ export class WorldSceneEngine {
     if (this.dprTimer >= 2 && this.frameCounter > 30) {
       this.dprTimer = 0;
       const maxDpr = Math.min(window.devicePixelRatio || 1, this.dprCap);
+      const DPR_STEPS = [1.0, 1.25, 1.5, 2.0];
       let next = this.currentDpr;
-      if (this.currentFps < 50 && next > 1.0) {
-        next = Math.max(1.0, next - 0.25);
-      } else if (this.currentFps > 57 && next < maxDpr) {
-        next = Math.min(maxDpr, next + 0.1);
+      const cur = DPR_STEPS.reduce((a, b) => (Math.abs(b - next) < Math.abs(a - next) ? b : a));
+      if (this.currentFps < 50 && cur > 1.0) {
+        next = Math.max(1.0, DPR_STEPS[DPR_STEPS.indexOf(cur) - 1]);
+      } else if (this.currentFps > 57 && cur < maxDpr) {
+        next = Math.min(maxDpr, DPR_STEPS[Math.min(DPR_STEPS.length - 1, DPR_STEPS.indexOf(cur) + 1)]);
       }
       if (next !== this.currentDpr) {
         this.currentDpr = next;
