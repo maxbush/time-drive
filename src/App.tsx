@@ -156,6 +156,9 @@ export default function App() {
   const engine = () => engineRef.current;
   const chIdx = Math.max(0, CHAPTERS.findIndex((c) => c.id === telemetry.activeZoneId));
   const chapter = `Глава ${String(chIdx + 1).padStart(2, '0')} · ${CHAPTERS[chIdx].label}`;
+  // Cinematic HUD: chrome dims to a whisper while the car is moving, full at stops.
+  const driving = telemetry.speedKmh > 8 && station === null && !drawerOpen && !showFinale;
+  const chromeFade = `transition-opacity duration-700 ${driving ? 'opacity-25' : 'opacity-100'}`;
 
   return (
     <div className="relative h-full w-full select-none overflow-hidden bg-[#05070b]">
@@ -210,9 +213,11 @@ export default function App() {
       {hudVisible && (
         <>
           {/* soft top / bottom scrims so thin text stays legible over bright sky or road */}
-          <div className="pointer-events-none fixed inset-x-0 top-0 z-10 h-24 bg-gradient-to-b from-black/60 via-black/25 to-transparent" />
-          <div className="pointer-events-none fixed inset-x-0 bottom-0 z-10 h-28 bg-gradient-to-t from-black/70 via-black/30 to-transparent" />
-          <TopBar onContact={() => openContact('Связаться')} touch={isPhone} chapter={chapter} />
+          <div className={chromeFade}>
+            <div className="pointer-events-none fixed inset-x-0 top-0 z-10 h-24 bg-gradient-to-b from-black/60 via-black/25 to-transparent" />
+            <div className="pointer-events-none fixed inset-x-0 bottom-0 z-10 h-28 bg-gradient-to-t from-black/70 via-black/30 to-transparent" />
+            <TopBar onContact={() => openContact('Связаться')} touch={isPhone} chapter={chapter} />
+          </div>
 
           {activeProject && !drawerOpen && (
             <ProjectCard
@@ -234,15 +239,17 @@ export default function App() {
             <FinalePanel onRestart={() => engine()?.resumeFromStation()} />
           )}
 
-          <ChapterBar
-            activeId={telemetry.activeZoneId}
-            progressPct={progressPct}
-            atStation={station !== null}
-            finale={showFinale}
-            autoCruise={telemetry.autoCruise}
-            onJump={(id) => engine()?.jumpToZone(id)}
-            onToggle={() => engine()?.toggleAutoCruise()}
-          />
+          <div className={chromeFade}>
+            <ChapterBar
+              activeId={telemetry.activeZoneId}
+              progressPct={progressPct}
+              atStation={station !== null}
+              finale={showFinale}
+              autoCruise={telemetry.autoCruise}
+              onJump={(id) => engine()?.jumpToZone(id)}
+              onToggle={() => engine()?.toggleAutoCruise()}
+            />
+          </div>
         </>
       )}
 
