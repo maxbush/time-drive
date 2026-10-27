@@ -5,16 +5,11 @@ const label = 'font-mono text-[10px] uppercase tracking-[0.24em] text-slate-500'
 const link =
   'border-b border-white/35 pb-0.5 font-mono text-[11px] uppercase tracking-[0.18em] text-white transition hover:border-amber-300 hover:text-amber-200';
 
-type Mode = 'live' | 'shots';
-
-const isTouch = () => window.matchMedia?.('(pointer: coarse) and (hover: none)').matches ?? false;
-
 // Side panel of a stop: full height on the right, about a third to a half of the screen.
 // The website stop opens it by itself on arrival: previews of the sites first, and a
-// click opens one site in detail as a live, scrollable window (or as screenshots) so
-// things like the parallax hero can be seen working. The other stops open it from
-// "Подробнее" with the project description and its components.
-// The scene stays visible (dimmed) on the left; Esc steps back / closes.
+// click expands into a near-fullscreen live window (real iframe, real resolution) so
+// the site reads exactly as in a browser. The other stops open it from "Подробнее"
+// with the project description and its components. Esc steps back / closes.
 export function ProjectDrawer({
   project,
   onClose,
@@ -28,14 +23,11 @@ export function ProjectDrawer({
 }) {
   const scroller = useRef<HTMLElement | null>(null);
   const [siteIdx, setSiteIdx] = useState<number | null>(null);
-  const [mode, setMode] = useState<Mode>('shots');
   const [frameLoaded, setFrameLoaded] = useState(false);
   const sites = project.sites;
   const site: SiteContent | null = sites && siteIdx !== null ? sites[siteIdx] : null;
 
   const openSite = (i: number) => {
-    const s = sites![i];
-    setMode(s.live && !isTouch() ? 'live' : 'shots');
     setFrameLoaded(false);
     setSiteIdx(i);
   };
@@ -51,42 +43,37 @@ export function ProjectDrawer({
   }, [onClose, site]);
 
   // A live site shares the page's main thread: freeze the 3D world while it is shown.
-  const live = site !== null && mode === 'live';
   useEffect(() => {
-    onLive(live);
+    onLive(site !== null);
     return () => onLive(false);
-  }, [live, onLive]);
+  }, [site, onLive]);
 
   // switching between list and a site starts from the top
   useEffect(() => {
     scroller.current?.scrollTo({ top: 0 });
   }, [siteIdx]);
 
-  const toggle = (m: Mode, text: string) => (
-    <button
-      onClick={() => {
-        setMode(m);
-        setFrameLoaded(false);
-      }}
-      className={`border-b pb-0.5 font-mono text-[11px] uppercase tracking-[0.18em] transition ${
-        mode === m ? 'border-amber-300 text-white' : 'border-transparent text-slate-500 hover:text-slate-200'
-      }`}
-    >
-      {text}
-    </button>
-  );
+  // Site detail = near-fullscreen live window; everything else = right drawer.
+  const panelCls = site
+    ? 'fixed inset-2 sm:inset-4 z-30 rounded-xl border border-white/15 flex flex-col bg-[#060a12]/97'
+    : `fixed bottom-0 right-0 top-0 z-30 flex flex-col overflow-y-auto border-l border-white/10 bg-[#060a12]/95 px-6 pb-6 pt-5 sm:px-8 ${
+        sites ? 'w-[min(680px,50vw)] short:w-[52vw]' : 'w-[min(460px,94vw)]'
+      }`;
 
   return (
     <>
       {/* soft dim over the scene next to the panel (no blur: it is expensive on phones) */}
-      <div className="pointer-events-none fixed inset-0 z-20 bg-gradient-to-r from-black/0 via-black/20 to-black/55" />
-      <aside
-        ref={scroller}
-        className={`drawer-in pointer-events-auto fixed bottom-0 right-0 top-0 z-30 flex flex-col overflow-y-auto border-l border-white/10 bg-[#060a12]/95 px-6 pb-6 pt-5 sm:px-8 ${
-          sites ? 'w-[min(680px,50vw)] short:w-[52vw]' : 'w-[min(460px,94vw)]'
+      <div
+        className={`pointer-events-none fixed inset-0 z-20 ${
+          site ? 'bg-black/60' : 'bg-gradient-to-r from-black/0 via-black/20 to-black/55'
         }`}
-      >
-        <div className="flex shrink-0 items-center justify-between border-b border-white/10 pb-3">
+      />
+      <aside ref={scroller} className={`drawer-in pointer-events-auto ${panelCls}`}>
+        <div
+          className={`flex shrink-0 items-center justify-between border-b border-white/10 ${
+            site ? 'px-5 py-3' : 'pb-3'
+          }`}
+        >
           {site ? (
             <button
               onClick={() => setSiteIdx(null)}
@@ -99,87 +86,60 @@ export function ProjectDrawer({
               {project.index} / {project.tag}
             </span>
           )}
-          <button
-            onClick={onClose}
-            className="font-mono text-[11px] uppercase tracking-[0.2em] text-slate-400 transition hover:text-white"
-          >
-            {UI.close} ×
-          </button>
-        </div>
-
-        {/* ---- one site in detail ---- */}
-        {site && (
-          <section className="mt-5 flex min-h-0 flex-1 flex-col short:mt-3">
-            <div className="flex items-start justify-between gap-4">
-              <div className="min-w-0">
-                <div className={label}>{site.kind}</div>
-                <h2 className="mt-1.5 text-[28px] font-extralight leading-[1.05] tracking-tight text-white sm:text-[32px] short:text-[22px]">
-                  {site.name}
-                </h2>
-              </div>
-              <a href={site.url} target="_blank" rel="noreferrer" className={`${link} mt-1 shrink-0`}>
+          <div className="flex items-center gap-5">
+            {site && (
+              <a href={site.url} target="_blank" rel="noreferrer" className={link}>
                 {UI.openSite} ↗
               </a>
-            </div>
-            <p
-              className={`mt-3 text-[13px] font-light leading-relaxed text-slate-300 short:hidden ${
-                mode === 'live' ? 'line-clamp-2' : ''
-              }`}
+            )}
+            <button
+              onClick={onClose}
+              className="font-mono text-[11px] uppercase tracking-[0.2em] text-slate-400 transition hover:text-white"
             >
-              {site.description}
-            </p>
-            {site.highlight && (
-              <p className="mt-2 border-l border-amber-300/60 pl-3 text-[12px] font-light leading-relaxed text-amber-100/90">
-                {site.highlight}
-              </p>
-            )}
+              {UI.close} ×
+            </button>
+          </div>
+        </div>
 
-            <div className="mt-4 flex items-center gap-5">
-              {toggle('live', UI.viewLive)}
-              {toggle('shots', UI.viewShots)}
-              <span className="ml-auto hidden font-mono text-[10px] tracking-wider text-slate-600 sm:block">
-                {site.domain}
-              </span>
+        {/* ---- one site in detail: near-fullscreen live window ---- */}
+        {site && (
+          <section className="flex min-h-0 flex-1 flex-col px-5 pb-4">
+            <div className="flex items-center gap-4 py-3">
+              <div className="flex min-w-0 items-baseline gap-3">
+                <span className={label}>{site.kind}</span>
+                <h2 className="truncate text-lg font-light leading-none tracking-tight text-white">
+                  {site.name}
+                </h2>
+                <span className="hidden font-mono text-[10px] tracking-wider text-slate-600 sm:block">
+                  {site.domain}
+                </span>
+              </div>
+              <p className="ml-auto hidden max-w-md truncate text-[12px] font-light text-slate-400 lg:block">
+                {site.highlight ?? site.description}
+              </p>
             </div>
 
-            {mode === 'live' ? (
-              <div className="relative mt-3 flex min-h-[55vh] flex-1 flex-col overflow-hidden rounded-md border border-white/15 bg-white">
-                <div className="flex shrink-0 items-center gap-1.5 bg-slate-800 px-3 py-1.5">
-                  <span className="h-2 w-2 rounded-full bg-rose-400/80" />
-                  <span className="h-2 w-2 rounded-full bg-amber-300/80" />
-                  <span className="h-2 w-2 rounded-full bg-emerald-400/80" />
-                  <span className="ml-3 truncate font-mono text-[10px] text-slate-300">{site.domain}</span>
+            <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-md border border-white/15 bg-white">
+              <div className="flex shrink-0 items-center gap-1.5 bg-slate-800 px-3 py-1.5">
+                <span className="h-2 w-2 rounded-full bg-rose-400/80" />
+                <span className="h-2 w-2 rounded-full bg-amber-300/80" />
+                <span className="h-2 w-2 rounded-full bg-emerald-400/80" />
+                <span className="ml-3 truncate font-mono text-[10px] text-slate-300">{site.domain}</span>
+              </div>
+              {!frameLoaded && (
+                <div className="absolute inset-x-0 top-9 bottom-0 flex items-center justify-center bg-[#0a0f18] font-mono text-[11px] uppercase tracking-[0.25em] text-slate-400">
+                  Загружаем сайт…
                 </div>
-                {!frameLoaded && (
-                  <div className="absolute inset-x-0 top-9 bottom-0 flex items-center justify-center bg-[#0a0f18] font-mono text-[11px] uppercase tracking-[0.25em] text-slate-400">
-                    Загружаем сайт…
-                  </div>
-                )}
-                <iframe
-                  key={site.id}
-                  src={site.url}
-                  title={site.name}
-                  referrerPolicy="no-referrer"
-                  onLoad={() => setFrameLoaded(true)}
-                  className="min-h-0 w-full flex-1 border-0 bg-white"
-                />
-              </div>
-            ) : (
-              <div className="mt-3 space-y-3">
-                {site.slides.map((src, k) => (
-                  <img
-                    key={src}
-                    src={src}
-                    alt={`${site.name}: экран ${k + 1}`}
-                    loading="lazy"
-                    className="w-full rounded-md border border-white/10"
-                  />
-                ))}
-                <p className="pb-1 text-center text-[11px] text-slate-500">
-                  Снимки экрана. Чтобы полистать сайт самому, выберите «{UI.viewLive}».
-                </p>
-              </div>
-            )}
+              )}
+              <iframe
+                key={site.id}
+                src={site.url}
+                title={site.name}
+                referrerPolicy="no-referrer"
+                onLoad={() => setFrameLoaded(true)}
+                className="min-h-0 w-full flex-1 border-0 bg-white"
+              />
+            </div>
           </section>
         )}
 
@@ -283,13 +243,13 @@ export function ProjectDrawer({
           </>
         )}
 
-        {!live && (
-        <button
-          onClick={onCta}
-          className="mt-6 h-11 w-full shrink-0 border border-white/30 font-mono text-[11px] uppercase tracking-[0.22em] text-white transition hover:bg-white hover:text-slate-950"
-        >
-          {project.cta} →
-        </button>
+        {!site && (
+          <button
+            onClick={onCta}
+            className="mt-6 h-11 w-full shrink-0 border border-white/30 font-mono text-[11px] uppercase tracking-[0.22em] text-white transition hover:bg-white hover:text-slate-950"
+          >
+            {project.cta} →
+          </button>
         )}
       </aside>
     </>

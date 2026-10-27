@@ -218,7 +218,7 @@ export function createEnvironment(
   scene: THREE.Scene,
   materials: MaterialPalette
 ): EnvironmentSystem {
-  scene.fog = new THREE.FogExp2('#0d182e', 0.0016);
+  scene.fog = new THREE.FogExp2('#0d182e', 0.00115);
 
   const skyMat = createSkyShaderMaterial();
   const skyMesh = new THREE.Mesh(new THREE.SphereGeometry(1600, 40, 28), skyMat);

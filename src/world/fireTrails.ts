@@ -82,19 +82,15 @@ export function createFireTrails(scene: THREE.Scene): FireTrails {
       void main() {
         vec2 c = gl_PointCoord - 0.5;
         float d = length(c) * 2.0;
+        float a = smoothstep(1.0, 0.15, d);
         float t = clamp(vT, 0.0, 1.0);
-        // Flame-shaped alpha: per-particle cell noise breaks the round blob
-        // into a ragged tongue; older flakes get rougher edges.
-        float n = fract(sin(dot(floor(gl_PointCoord * 7.0 + vSeed * 57.0),
-                                vec2(12.9898, 78.233))) * 43758.5453);
-        float a = smoothstep(1.0, 0.15, d) * (0.45 + 0.55 * n);
+        // Orange fire from the first frame: HDR white here just blooms into a
+        // headlight-like glare, which is NOT what flames look like.
         vec3 hot = vec3(1.9, 0.95, 0.2);
         vec3 mid = vec3(1.7, 0.5, 0.07);
         vec3 cool = vec3(0.55, 0.07, 0.02);
         vec3 col = mix(hot, mid, smoothstep(0.0, 0.18, t));
         col = mix(col, cool, smoothstep(0.18, 1.0, t));
-        // White-hot core on young particles — fire reads as fire, not glow.
-        col += vec3(1.3, 1.1, 0.6) * smoothstep(0.45, 0.0, d) * (1.0 - t) * 0.7;
         float fade = pow(1.0 - t, 1.5);
         float flick = 0.75 + 0.25 * sin(uTime * 42.0 + vSeed * 31.0);
         gl_FragColor = vec4(max(col * a * a * fade * flick, vec3(0.0)), 1.0);

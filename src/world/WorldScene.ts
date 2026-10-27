@@ -367,38 +367,6 @@ export class WorldSceneEngine {
     this.avenue = buildGrandAvenue(palette);
     this.scene.add(this.avenue.group);
 
-    // Ground continuation past the road's end — one cheap fogged plane so the
-    // world dissolves into haze instead of cutting to black. Plus low haze
-    // banks (billboard sprites) hugging the road sides and the far end.
-    const endPlane = new THREE.Mesh(
-      new THREE.PlaneGeometry(460, 360),
-      new THREE.MeshStandardMaterial({ color: '#0a0e18', roughness: 0.95, metalness: 0 })
-    );
-    endPlane.rotation.x = -Math.PI / 2;
-    endPlane.position.set(0, -0.05, -600);
-    this.scene.add(endPlane);
-
-    const hazeMat = new THREE.SpriteMaterial({
-      map: texLib.haloCoronaMap,
-      color: new THREE.Color('#16233c'),
-      transparent: true,
-      opacity: 0.5,
-      depthWrite: false,
-    });
-    const hazeSpots: [number, number, number, number, number][] = [
-      [0, 5, -520, 360, 30],
-      [-80, 3.5, -450, 220, 20],
-      [80, 3.5, -450, 220, 20],
-      [0, 8, -620, 460, 40],
-    ];
-    for (const [x, y, z, w, h] of hazeSpots) {
-      const s = new THREE.Sprite(hazeMat.clone());
-      s.scale.set(w, h, 1);
-      s.position.set(x, y, z);
-      s.layers.set(1); // skip the planar reflection pass
-      this.scene.add(s);
-    }
-
     const archResult = buildWorldArchitecture(palette, texLib.maxAnisotropy);
     this.archGroup = archResult.group;
     this.scene.add(this.archGroup);
@@ -1042,12 +1010,6 @@ export class WorldSceneEngine {
       yPos > 8 || zPos < -430 ? 1.02 : curZone.id === WORLD_ZONES[0].id ? 1.3 : 1.16;
     this.renderer.toneMappingExposure +=
       (expTarget - this.renderer.toneMappingExposure) * Math.min(1, dt * 2);
-
-    // Situational haze: thicken fog approaching the road's end / gate so the
-    // world edge dissolves into atmosphere instead of a black cut-off.
-    const fogTarget = zPos < -350 ? 0.003 : 0.0016;
-    const fog = this.scene.fog as THREE.FogExp2 | null;
-    if (fog) fog.density += (fogTarget - fog.density) * Math.min(1, dt * 1.5);
 
     // Zonal economy: the dense Act I street is the heaviest stretch — on weak
     // hardware (governor already at tier 1+) micro-props vanish and the two
