@@ -316,10 +316,13 @@ export class WorldSceneEngine {
       this.dprCap = dprParam;
       this.dprPinned = true;
     }
-    const pixelRatio = Math.min(
-      window.devicePixelRatio || 1,
-      this.dprPinned ? this.dprCap : 2
-    );
+    // Desktop supersampling: on 1x / 1.25x screens (most laptops) rendering at native size
+    // looks soft, so start at 1.5x and let the governor climb to 2x while the frame rate has
+    // headroom (it steps back down on weak hardware). Phones keep their own profile.
+    const nativeDpr = window.devicePixelRatio || 1;
+    const pixelRatio = this.dprPinned
+      ? this.dprCap
+      : Math.min(this.mobile ? nativeDpr : Math.max(nativeDpr, 1.5), 2);
     this.currentDpr = pixelRatio;
 
     this.renderer = new THREE.WebGLRenderer({
@@ -464,6 +467,15 @@ export class WorldSceneEngine {
       this.bloomPass.setSize(width * this.bloomScale, height * this.bloomScale);
     } else {
       this.composer.addPass(new SMAAPass(width, height));
+      // A light contrast-adaptive sharpen after SMAA brings back the edge crispness that the
+      // downsampled image and the AA smoothing take away. ?sharp=0..1 (0 = off), default 0.35.
+      const sharpParam = parseFloat(params.get('sharp') ?? '');
+      const sharpness = Number.isFinite(sharpParam) ? sharpParam : 0.35;
+      if (sharpness > 0) {
+        this.sharpPass = createSharpenPass(sharpness);
+        this.composer.addPass(this.sharpPass);
+        this.updateFxaa();
+      }
     }
 
     // Precompile all shaders behind the loading screen — kills first-frame
@@ -1004,10 +1016,10 @@ export class WorldSceneEngine {
     this.dprTimer += dt;
     if (this.dprTimer >= 2 && this.frameCounter > 30 && !(zPos < -380 || yPos > 5)) {
       this.dprTimer = 0;
-      const maxDpr = Math.min(window.devicePixelRatio || 1, this.dprCap);
+      const maxDpr = Math.min(this.maxRenderDpr(), this.dprCap);
       // Phones never go below 1.5 (below that the image turns to mush).
       const floor = this.mobile ? 1.5 : 1.0;
-      const DPR_STEPS = [1.0, 1.25, 1.5, 2.0].filter((s) => s >= floor);
+      const DPR_STEPS = [1.0, 1.25, 1.5, 1.75, 2.0].filter((s) => s >= floor);
       const target = this.frameCap || 60; // fps we are trying to hold
       let next = this.currentDpr;
       const cur = DPR_STEPS.reduce((a, b) => (Math.abs(b - next) < Math.abs(a - next) ? b : a));
@@ -1118,10 +1130,16 @@ export class WorldSceneEngine {
     }
   };
 
+  // Highest pixel ratio worth rendering: the screen's own, or 2x on desktop (supersampling)
+  private maxRenderDpr() {
+    const native = window.devicePixelRatio || 1;
+    return this.mobile ? native : Math.max(native, 2);
+  }
+
   // Single place that actually resizes renderer/composer/RT — every DPR change
   // routes through here so buffers are reallocated exactly once per step.
   private setDpr(next: number) {
-    next = Math.min(next, this.dprCap, window.devicePixelRatio || 1);
+    next = Math.min(next, this.dprCap, this.maxRenderDpr());
     if (Math.abs(next - this.currentDpr) < 0.01) return;
     this.currentDpr = next;
     this.renderer.setPixelRatio(next);
@@ -1138,10 +1156,9 @@ export class WorldSceneEngine {
 
   // FXAA needs the texel size of the (DPR-scaled) drawing buffer
   private updateFxaa() {
-    if (!this.fxaaPass) return;
     const w = this.renderer.domElement.width || this.viewW;
     const h = this.renderer.domElement.height || this.viewH;
-    this.fxaaPass.material.uniforms['resolution'].value.set(1 / w, 1 / h);
+    if (this.fxaaPass) this.fxaaPass.material.uniforms['resolution'].value.set(1 / w, 1 / h);
     if (this.sharpPass) this.sharpPass.uniforms['resolution'].value.set(1 / w, 1 / h);
   }
 
