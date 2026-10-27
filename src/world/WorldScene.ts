@@ -271,6 +271,7 @@ export class WorldSceneEngine {
   private spaceDprDropped = false;
   private cityHidden = false;
   private treesGroup: THREE.Object3D | null = null;
+  private microDetail: THREE.Object3D[] | null = null;
   public onFlash?: (v: number, kind: 'jump' | 'launch' | null) => void;
   /** Fired when the stand of stop 01 switches to another client site. */
 
@@ -1003,12 +1004,25 @@ export class WorldSceneEngine {
     const curZone = this.resolveCurrentZone(this.vehicle.position.z, this.vehicle.position.y);
     this.activeZoneId = curZone.id;
 
+    // Zonal economy: the dense Act I street is the heaviest stretch — on weak
+    // hardware (governor already at tier 1+) micro-props vanish and the two
+    // heavy passes thin out to every 3rd frame. Other zones keep full quality.
+    const heavyZone = curZone.id === WORLD_ZONES[0].id && this.qualityTier >= 1;
+    if (!this.microDetail) {
+      this.microDetail = [];
+      this.scene.traverse((o) => {
+        if (o.name === 'reflSkip') this.microDetail!.push(o);
+      });
+    }
+    for (const m of this.microDetail) m.visible = !heavyZone;
+
     // The two heavy extra passes alternate: shadows on even frames, the planar reflection on
     // odd ones. Sharing the even frames made heavy and light frames alternate (micro-judder
     // on weak GPUs even at a decent average fps); now the cost is spread evenly.
-    this.renderer.shadowMap.needsUpdate = !this.cityHidden && this.frameCounter % 2 === 0;
+    this.renderer.shadowMap.needsUpdate =
+      !this.cityHidden && this.frameCounter % (heavyZone ? 3 : 2) === 0;
 
-    if (this.frameCounter % 2 === 1) {
+    if (this.frameCounter % (heavyZone ? 3 : 2) === 1) {
       this.updatePlanarReflection();
     }
     // Desktop CAS: stronger on the opening street so the gantry posters read, light elsewhere
