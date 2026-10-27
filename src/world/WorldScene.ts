@@ -1198,7 +1198,8 @@ export class WorldSceneEngine {
         break;
       case 'KeyP':
       case 'Space':
-        if (!e.repeat) this.toggleAutoCruise();
+        // (a focused UI button already turns Space into a click: don't toggle twice)
+        if (!e.repeat && tag !== 'BUTTON') this.toggleAutoCruise();
         break;
       case 'KeyC':
         if (!e.repeat) {

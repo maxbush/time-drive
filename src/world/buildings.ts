@@ -959,10 +959,10 @@ function buildCluster1WebArchitecture(b: ArchitectureBuilder, treePlacements: Tr
   buildDesignerProjectTotem(b, {
     side: 'WEST',
     z: -95,
-    era: 'PROJECT 01 // WEB ARCHITECTURE',
-    title: 'WEB PLATFORMS (4 SITES)',
-    subtitle: 'Interactive 3D · Next.js / TypeScript · High-Conversion Interfaces',
-    metrics: ['4 LIVE SITES|Production Cases', 'NEXT.JS / TS|Modern Stack', '99+ PERF|Core Web Vitals'],
+    era: 'ПРОЕКТ 01 // ВЕБ',
+    title: 'ВЕБ-ПЛАТФОРМЫ',
+    subtitle: 'Сайты и интерактив под ключ · 3D · Next.js',
+    metrics: ['ПОД КЛЮЧ|от идеи до запуска', 'NEXT.JS · TS|современный стек', '3D · WEBGL|живой интерактив'],
     accentHex: '#f59e0b',
     secondaryHex: '#38bdf8',
   });
@@ -1059,10 +1059,10 @@ function buildCluster2AlbionAndSpindle(b: ArchitectureBuilder, treePlacements: T
   buildDesignerProjectTotem(b, {
     side: 'WEST',
     z: -222,
-    era: 'PROJECT 02 // AUTOMATION & MESSAGING',
-    title: 'ALBION BOT ECOSYSTEM',
-    subtitle: 'MeritHub API Sync · Live Schedule Watcher · WhatsApp & Telegram Dispatch',
-    metrics: ['MERITHUB API|Auto Schedule Sync', 'WHATSAPP|Student Alerts', 'TELEGRAM|Coordinator Control'],
+    era: 'ПРОЕКТ 02 // АВТОМАТИЗАЦИЯ',
+    title: 'ALBION BOT',
+    subtitle: 'Расписание MeritHub → уведомления в WhatsApp и Telegram',
+    metrics: ['MERITHUB|синхронизация по API', 'WHATSAPP|ученикам', 'TELEGRAM|координатору'],
     accentHex: '#38bdf8',
     secondaryHex: '#f59e0b',
   });
@@ -1196,10 +1196,10 @@ function buildCluster3TendersAndContinuum(b: ArchitectureBuilder, treePlacements
   buildDesignerProjectTotem(b, {
     side: 'EAST',
     z: -345,
-    era: 'PROJECT 03 // GOVTECH & B2B ANALYTICS',
-    title: 'GIAS.BY TENDER SYSTEM',
-    subtitle: 'Competitor Intelligence · Historical Bid Analysis · Procurement Plan Filtering',
-    metrics: ['GIAS.BY API|Real-Time Ingestion', 'COMPETITORS|Win/Loss Matrix', 'GOV PLANS|Smart Filtering'],
+    era: 'ПРОЕКТ 03 // ТЕНДЕРЫ И АНАЛИТИКА',
+    title: 'ТЕНДЕРНЫЙ БОТ',
+    subtitle: 'Конкуренты, история участия, планы закупок',
+    metrics: ['API GIAS.BY|данные о торгах', 'КОНКУРЕНТЫ|анализ участия', 'ПЛАНЫ ЗАКУПОК|анализ и фильтр'],
     accentHex: '#f59e0b',
     secondaryHex: '#38bdf8',
   });

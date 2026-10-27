@@ -1,8 +1,68 @@
 @import "tailwindcss";
 
+/* Landscape phones: very little height, so panels switch to a compact layout */
+@custom-variant short (@media (max-height: 480px));
+
+@theme {
+  --font-sans: "Inter Variable", Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
 * {
   box-sizing: border-box;
   user-select: none;
+}
+
+html, body, #root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background: #05070b;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+button {
+  cursor: pointer;
+}
+
+/* Form fields stay selectable/typable despite the global user-select: none */
+input, textarea {
+  user-select: text;
+}
+
+/* Loading screen: a faint grid drifting upward */
+.loader-grid {
+  background-image:
+    linear-gradient(rgba(148, 163, 184, 0.07) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(148, 163, 184, 0.07) 1px, transparent 1px);
+  background-size: 56px 56px;
+  mask-image: radial-gradient(70% 60% at 50% 50%, #000 20%, transparent 80%);
+  -webkit-mask-image: radial-gradient(70% 60% at 50% 50%, #000 20%, transparent 80%);
+  animation: grid-drift 14s linear infinite;
+}
+@keyframes grid-drift {
+  from { background-position: 0 0, 0 0; }
+  to { background-position: 0 -56px, 0 0; }
+}
+
+/* Panels slide/fade in; cheap transforms only */
+.card-in { animation: card-in 0.55s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+@keyframes card-in {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: none; }
+}
+.drawer-in { animation: drawer-in 0.4s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+@keyframes drawer-in {
+  from { opacity: 0; transform: translateX(32px); }
+  to { opacity: 1; transform: none; }
+}
+.panel-in { animation: panel-in 0.3s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+@keyframes panel-in {
+  from { opacity: 0; transform: translateY(10px) scale(0.98); }
+  to { opacity: 1; transform: none; }
 }
 
 /* "Rotate your phone" hint: the phone icon tips onto its side and back */
@@ -14,16 +74,8 @@
 .rotate-hint {
   animation: rotate-hint 2.8s ease-in-out infinite;
 }
+
 @media (prefers-reduced-motion: reduce) {
   .rotate-hint { animation: none; transform: rotate(-90deg); }
-}
-
-html, body, #root {
-  width: 100%;
-  height: 100%;
-  margin: 0;
-  padding: 0;
-  overflow: hidden;
-  background: #05070b;
-  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  .loader-grid, .card-in, .drawer-in, .panel-in { animation: none; }
 }
