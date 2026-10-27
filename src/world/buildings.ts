@@ -64,7 +64,6 @@ interface BuildingSpec {
   }>;
   roofProps?: {
     waterTower?: boolean;
-    billboard?: { title: string; sub: string };
     antennas?: number;
   };
   seed: number;
@@ -468,28 +467,6 @@ function buildAuthoredBuilding(b: ArchitectureBuilder, spec: BuildingSpec) {
       b.addCylinder('darkBronze', tx, roofY + legH + tankH + 0.62, tz, 0.08, tankR * 0.9, 1.24, 14);
     }
 
-    if (spec.roofProps.billboard) {
-      const bbW = 9.4;
-      const bbH = 4.4;
-      const bbX = edgeX - axis.nx * 1.6;
-      const bbZ = edgeZ - axis.nz * 1.6 + axis.rz * sz * 0.14;
-      const signY = roofY + 5.4;
-      addOrientedBox(b, 'blackSteel', bbX, roofY, bbZ, axis, -bbW * 0.36, 1.6, -0.2, 0.32, 3.2, 0.32);
-      addOrientedBox(b, 'blackSteel', bbX, roofY, bbZ, axis, bbW * 0.36, 1.6, -0.2, 0.32, 3.2, 0.32);
-      addOrientedBox(b, 'darkBronze', bbX, roofY, bbZ, axis, 0, signY - roofY, -0.2, bbW, bbH, 0.34);
-      b.addSignBoard(
-        bbX + axis.nx * 0.06,
-        signY,
-        bbZ + axis.nz * 0.06,
-        axis.rotY,
-        bbW - 0.7,
-        bbH - 0.55,
-        spec.roofProps.billboard.title,
-        spec.roofProps.billboard.sub,
-        { bg: '#0d1420', fg: '#f6efdd', accent: '#f59e0b', border: true, tag: 'AD // CIRCA 2004' }
-      );
-    }
-
     if (spec.roofProps.antennas) {
       for (let i = 0; i < spec.roofProps.antennas; i++) {
         const ax = cx + (rng() - 0.5) * sx * 0.42;
@@ -764,18 +741,18 @@ function buildAct1SignsAndGantries(b: ArchitectureBuilder) {
   const gantries = [
     {
       z: 245,
-      leftTitle: 'PHP 5 · MYSQL · APACHE',
-      leftSub: 'LAMP STACK · SERVER-SIDE TEMPLATES · FTP DEPLOY',
+      leftTitle: 'PHP 5 · MYSQL',
+      leftSub: 'LAMP · FTP DEPLOY',
       rightTitle: 'WORDPRESS · CMS',
-      rightSub: 'CUSTOM THEMES · PLUGINS · MONOLITHIC BLOGS',
+      rightSub: 'THEMES · PLUGINS',
       accent: '#f59e0b',
     },
     {
       z: 162,
-      leftTitle: 'BOOTSTRAP 2 · JQUERY',
-      leftSub: '12-COLUMN GRIDS · DOM MANIPULATION · AJAX',
-      rightTitle: 'WEB 2.0 · TABLE LAYOUTS',
-      rightSub: 'XHTML 1.0 · FLASH BANNERS · SKEUOMORPHIC UI',
+      leftTitle: 'BOOTSTRAP · JQUERY',
+      leftSub: '12-COLUMN GRIDS · AJAX',
+      rightTitle: 'WEB 2.0 · TABLES',
+      rightSub: 'XHTML · FLASH BANNERS',
       accent: '#38bdf8',
     },
   ];
@@ -1247,7 +1224,6 @@ export function buildWorldArchitecture(
       setbackMeters: 3.2,
       roofProps: {
         waterTower: true,
-        billboard: { title: 'WINAMP', sub: 'IT REALLY WHIPS THE LLAMA' },
         antennas: 2,
       },
       activeFaces: [
@@ -1351,7 +1327,6 @@ export function buildWorldArchitecture(
       litProbability: 0.6,
       style: 'industrial-loft',
       roofProps: {
-        billboard: { title: 'FREE RINGTONES', sub: 'POLYPHONIC HITS · SMS 3344' },
         antennas: 1,
       },
       activeFaces: [
@@ -1423,7 +1398,6 @@ export function buildWorldArchitecture(
       style: 'fluted-gallery',
       verticalFins: true,
       roofProps: {
-        billboard: { title: 'ICQ · UIN', sub: 'UH-OH! MESSENGER INSIDE' },
         antennas: 3,
       },
       activeFaces: [

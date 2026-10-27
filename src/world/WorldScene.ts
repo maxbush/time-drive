@@ -257,6 +257,11 @@ export class WorldSceneEngine {
   private dprTimer = 0;
   private viewW = 1;
   private viewH = 1;
+  private sharpBase = 0.12; // desktop CAS strength after the opening street
+  private sharpBoost = 0.3; // extra strength on the opening street (posters)
+  private sharpFixed = false;
+  private sharpCur = 0.12;
+  private ssDowns = 0; // times a supersampled resolution had to be stepped back down
   private dprCap = 2.0; // governor steps this down on weak hardware anyway
   private qualityTier = 0; // 0 full → 1 low-DPR → 2 no reflection → 3 no bloom
   private lowStreak = 0;
@@ -316,13 +321,13 @@ export class WorldSceneEngine {
       this.dprCap = dprParam;
       this.dprPinned = true;
     }
-    // Desktop supersampling: on 1x / 1.25x screens (most laptops) rendering at native size
-    // looks soft, so start at 1.5x and let the governor climb to 2x while the frame rate has
-    // headroom (it steps back down on weak hardware). Phones keep their own profile.
+    // Desktop supersampling: start at the screen's own resolution (a weak laptop must not
+    // begin heavy), then the governor climbs towards 2x only while there is clear frame-rate
+    // headroom, and drops back for good if it does not fit. Phones keep their own profile.
     const nativeDpr = window.devicePixelRatio || 1;
     const pixelRatio = this.dprPinned
       ? this.dprCap
-      : Math.min(this.mobile ? nativeDpr : Math.max(nativeDpr, 1.5), 2);
+      : Math.min(nativeDpr, 2);
     this.currentDpr = pixelRatio;
 
     this.renderer = new THREE.WebGLRenderer({
@@ -468,9 +473,12 @@ export class WorldSceneEngine {
     } else {
       this.composer.addPass(new SMAAPass(width, height));
       // A light contrast-adaptive sharpen after SMAA brings back the edge crispness that the
-      // downsampled image and the AA smoothing take away. ?sharp=0..1 (0 = off), default 0.35.
+      // downsampled image and the AA smoothing take away. Kept low overall; the opening street
+      // (Act I, where the small gantry posters must read) gets extra, see the animate loop.
+      // ?sharp=0..1 sets a fixed strength (0 = off).
       const sharpParam = parseFloat(params.get('sharp') ?? '');
-      const sharpness = Number.isFinite(sharpParam) ? sharpParam : 0.35;
+      const sharpness = Number.isFinite(sharpParam) ? sharpParam : this.sharpBase;
+      if (Number.isFinite(sharpParam)) this.sharpFixed = true;
       if (sharpness > 0) {
         this.sharpPass = createSharpenPass(sharpness);
         this.composer.addPass(this.sharpPass);
@@ -999,6 +1007,12 @@ export class WorldSceneEngine {
     if (this.frameCounter % 2 === 0) {
       this.updatePlanarReflection();
     }
+    // Desktop CAS: stronger on the opening street so the gantry posters read, light elsewhere
+    if (this.sharpPass && !this.mobile && !this.sharpFixed) {
+      const want = this.sharpBase + (zPos > 105 ? this.sharpBoost : 0);
+      this.sharpCur += (want - this.sharpCur) * (1 - Math.exp(-2 * dt));
+      this.sharpPass.uniforms.uSharp.value = this.sharpCur;
+    }
     this.composer.render();
 
     this.frameCounter++;
@@ -1014,7 +1028,9 @@ export class WorldSceneEngine {
 
     // Adaptive resolution: scale pixel ratio to hold ~60fps.
     this.dprTimer += dt;
-    if (this.dprTimer >= 2 && this.frameCounter > 30 && !(zPos < -380 || yPos > 5)) {
+    // (checked faster during the first seconds, so a weak machine settles quickly instead of
+    // crawling at 20 fps for the whole opening street)
+    if (this.dprTimer >= (this.elapsedTime < 25 ? 1.2 : 2) && this.frameCounter > 30 && !(zPos < -380 || yPos > 5)) {
       this.dprTimer = 0;
       const maxDpr = Math.min(this.maxRenderDpr(), this.dprCap);
       // Phones never go below 1.5 (below that the image turns to mush).
@@ -1023,10 +1039,20 @@ export class WorldSceneEngine {
       const target = this.frameCap || 60; // fps we are trying to hold
       let next = this.currentDpr;
       const cur = DPR_STEPS.reduce((a, b) => (Math.abs(b - next) < Math.abs(a - next) ? b : a));
+      const native = window.devicePixelRatio || 1;
       if (this.currentFps < target * 0.83 && cur > floor) {
-        next = DPR_STEPS[Math.max(0, DPR_STEPS.indexOf(cur) - 1)];
+        // very slow: skip a step instead of crawling down one 1-2 s window at a time
+        const stepsDown = this.currentFps < target * 0.6 ? 2 : 1;
+        next = DPR_STEPS[Math.max(0, DPR_STEPS.indexOf(cur) - stepsDown)];
         this.dprDowns++;
-      } else if (this.currentFps > target * 0.95 && cur < maxDpr && (!this.mobile || this.dprDowns === 0)) {
+        if (cur > native + 0.01) this.ssDowns++; // supersampling did not fit: never retry
+      } else if (
+        this.currentFps > target * 0.95 &&
+        cur < maxDpr &&
+        (!this.mobile || this.dprDowns === 0) &&
+        // above the screen's own resolution (supersampling) only with clear headroom, once
+        (cur < native - 0.01 || (this.ssDowns === 0 && this.currentFps > target * 0.97))
+      ) {
         next = Math.min(maxDpr, DPR_STEPS[Math.min(DPR_STEPS.length - 1, DPR_STEPS.indexOf(cur) + 1)]);
       }
       // applied at the start of the next frame (see pendingDpr); pinned = never auto-change

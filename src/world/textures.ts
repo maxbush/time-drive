@@ -680,13 +680,24 @@ export function createSignageTexture(
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   const fontFamily = style.serif ? 'Georgia, "Times New Roman", serif' : '"Inter", sans-serif';
-  ctx.font = `700 ${title.length > 16 ? 54 : 66}px ${fontFamily}`;
-  ctx.fillText(title, w / 2, subtitle ? h * 0.46 : h * 0.54);
+  // Signs are read from far away: make the title as large as the width allows (short
+  // titles get big letters) and shrink only the long ones to fit.
+  const fit = (text: string, font: (px: number) => string, maxPx: number, minPx: number, maxW: number) => {
+    let px = maxPx;
+    ctx.font = font(px);
+    while (ctx.measureText(text).width > maxW && px > minPx) {
+      px -= 2;
+      ctx.font = font(px);
+    }
+  };
+  fit(title, (px) => `700 ${px}px ${fontFamily}`, 88, 36, w - 230);
+  ctx.fillText(title, w / 2, subtitle ? h * 0.44 : h * 0.54);
 
   if (subtitle) {
     ctx.fillStyle = style.accent;
-    ctx.font = '500 24px "Inter", sans-serif';
-    ctx.fillText(subtitle.toUpperCase(), w / 2, h * 0.77);
+    const sub = subtitle.toUpperCase();
+    fit(sub, (px) => `500 ${px}px "Inter", sans-serif`, 32, 16, w - 170);
+    ctx.fillText(sub, w / 2, h * 0.79);
   }
 
   const tex = new THREE.CanvasTexture(c);
