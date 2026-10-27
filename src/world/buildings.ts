@@ -734,7 +734,7 @@ function buildAct1SignsAndGantries(b: ArchitectureBuilder) {
     b.addPastRoadSign(sx + nx * 0.22, 4.6, z + nz * 0.22, rotY, 8.8, 4.4, crossedOut);
   };
 
-  buildHighwaySign(292, false); // WELCOME TO THE PAST
+  // WELCOME TO THE PAST gantry removed — nobody has time to read it mid-drive
   buildHighwaySign(108, true);  // CROSSED-OUT "THE PAST" right before Ribbed Gate!
 
   // 2. Overhead Web 2.0 Gantry Portals
