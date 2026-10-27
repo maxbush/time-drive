@@ -206,6 +206,7 @@ export class WorldSceneEngine {
   private bloomScale = 1;
   private frameCap = 0; // 0 = uncapped, else target FPS
   private capStreak = 0;
+  private fpsForced = false; // ?fps=… given: never auto-change the cap
   private paused = false;
   // DPR changes are queued and applied at the START of the next frame, right before
   // rendering: resizing the canvas clears it, and doing that at the end of a frame
@@ -295,11 +296,15 @@ export class WorldSceneEngine {
     const coarse = window.matchMedia?.('(pointer: coarse) and (hover: none)').matches ?? false;
     this.mobile = qParam === 'mobile' || (!qParam && coarse);
     const fpsParam = params.get('fps');
+    this.fpsForced = fpsParam !== null;
     if (fpsParam === '30' || fpsParam === '45' || fpsParam === '60') this.frameCap = fpsParam === '60' ? 0 : Number(fpsParam);
     if (this.mobile) {
       this.bloomScale = 0.5;
       this.LIGHT_POOL_SIZE = 3;
-      this.dprCap = 1.5;
+      // Tested on a Redmi Note 12 Pro: full DPR 2.0 at a steady 30 fps looked clearly
+      // better than 1.5 (which read as mush) and was smooth enough, so that is the default.
+      this.dprCap = 2.0;
+      if (!fpsParam) this.frameCap = 30;
       this.reflectionDisabled = true;
       this.qualityTier = 2; // reflection already off; next governor step drops bloom
     }
@@ -311,7 +316,7 @@ export class WorldSceneEngine {
     }
     const pixelRatio = Math.min(
       window.devicePixelRatio || 1,
-      this.dprPinned ? this.dprCap : this.mobile ? 1.5 : 2
+      this.dprPinned ? this.dprCap : 2
     );
     this.currentDpr = pixelRatio;
 
@@ -966,8 +971,8 @@ export class WorldSceneEngine {
     if (this.dprTimer >= 2 && this.frameCounter > 30 && !(zPos < -380 || yPos > 5)) {
       this.dprTimer = 0;
       const maxDpr = Math.min(window.devicePixelRatio || 1, this.dprCap);
-      // Phones never go below 1.25 (below that the image turns to mush).
-      const floor = this.mobile ? 1.25 : 1.0;
+      // Phones never go below 1.5 (below that the image turns to mush).
+      const floor = this.mobile ? 1.5 : 1.0;
       const DPR_STEPS = [1.0, 1.25, 1.5, 2.0].filter((s) => s >= floor);
       const target = this.frameCap || 60; // fps we are trying to hold
       let next = this.currentDpr;
@@ -982,7 +987,7 @@ export class WorldSceneEngine {
       if (!this.dprPinned && Math.abs(next - this.currentDpr) >= 0.01) this.pendingDpr = next;
 
       // Phones that can't hold ~48 fps settle on a steady 30 instead of 20-40 stutter.
-      if (this.mobile && !this.frameCap) {
+      if (this.mobile && !this.frameCap && !this.fpsForced) {
         this.capStreak = this.currentFps < 46 ? this.capStreak + 1 : 0;
         if (this.capStreak >= 2) {
           this.frameCap = 30;
