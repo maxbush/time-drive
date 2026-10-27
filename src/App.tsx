@@ -162,6 +162,15 @@ export default function App() {
       {/* 3D WebGL canvas */}
       <div ref={containerRef} className="h-full w-full cursor-grab active:cursor-grabbing" />
 
+      {/* Cinematic vignette — pure CSS, zero GL cost */}
+      <div
+        className="pointer-events-none fixed inset-0 z-[6]"
+        style={{
+          background:
+            'radial-gradient(ellipse at 50% 45%, transparent 55%, rgba(2,6,17,0.42) 100%)',
+        }}
+      />
+
       <Loader visible={loading} pct={loadPct} />
       {showRotate && <RotateHint onContinue={() => setPortraitOk(true)} />}
 

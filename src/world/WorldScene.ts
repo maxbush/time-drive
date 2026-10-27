@@ -1004,6 +1004,13 @@ export class WorldSceneEngine {
     const curZone = this.resolveCurrentZone(this.vehicle.position.z, this.vehicle.position.y);
     this.activeZoneId = curZone.id;
 
+    // Zone-tuned exposure: brighter warm dusk in Act I, cooler in the city,
+    // deeper in space — same ACES curve, zero frame cost.
+    const expTarget =
+      yPos > 8 || zPos < -430 ? 1.02 : curZone.id === WORLD_ZONES[0].id ? 1.3 : 1.16;
+    this.renderer.toneMappingExposure +=
+      (expTarget - this.renderer.toneMappingExposure) * Math.min(1, dt * 2);
+
     // Zonal economy: the dense Act I street is the heaviest stretch — on weak
     // hardware (governor already at tier 1+) micro-props vanish and the two
     // heavy passes thin out to every 3rd frame. Other zones keep full quality.
