@@ -261,6 +261,8 @@ export class WorldSceneEngine {
   private sharpBoost = 0.3; // extra strength on the opening street (posters)
   private sharpFixed = false;
   private sharpCur = 0.12;
+  private dipStreak = 0; // consecutive slow governor windows
+  private upStreak = 0; // consecutive windows with headroom
   private ssDowns = 0; // times a supersampled resolution had to be stepped back down
   private dprCap = 2.0; // governor steps this down on weak hardware anyway
   private qualityTier = 0; // 0 full → 1 low-DPR → 2 no reflection → 3 no bloom
@@ -1001,10 +1003,12 @@ export class WorldSceneEngine {
     const curZone = this.resolveCurrentZone(this.vehicle.position.z, this.vehicle.position.y);
     this.activeZoneId = curZone.id;
 
-    // Shadow map renders every other frame — halves the third pass cost
+    // The two heavy extra passes alternate: shadows on even frames, the planar reflection on
+    // odd ones. Sharing the even frames made heavy and light frames alternate (micro-judder
+    // on weak GPUs even at a decent average fps); now the cost is spread evenly.
     this.renderer.shadowMap.needsUpdate = !this.cityHidden && this.frameCounter % 2 === 0;
 
-    if (this.frameCounter % 2 === 0) {
+    if (this.frameCounter % 2 === 1) {
       this.updatePlanarReflection();
     }
     // Desktop CAS: stronger on the opening street so the gantry posters read, light elsewhere
@@ -1040,20 +1044,30 @@ export class WorldSceneEngine {
       let next = this.currentDpr;
       const cur = DPR_STEPS.reduce((a, b) => (Math.abs(b - next) < Math.abs(a - next) ? b : a));
       const native = window.devicePixelRatio || 1;
-      if (this.currentFps < target * 0.83 && cur > floor) {
-        // very slow: skip a step instead of crawling down one 1-2 s window at a time
-        const stepsDown = this.currentFps < target * 0.6 ? 2 : 1;
-        next = DPR_STEPS[Math.max(0, DPR_STEPS.indexOf(cur) - stepsDown)];
-        this.dprDowns++;
-        if (cur > native + 0.01) this.ssDowns++; // supersampling did not fit: never retry
-      } else if (
+      // Every resolution change reallocates the render buffers (a one-off hitch), so a single
+      // slow or fast window is not enough: a mild dip must repeat in two windows in a row,
+      // and so must the headroom before climbing. A severe drop (< 60% of the target) acts at
+      // once and skips a step, so a weak machine still settles quickly.
+      const slow = this.currentFps < target * 0.83 && cur > floor;
+      const severe = this.currentFps < target * 0.6;
+      this.dipStreak = slow ? this.dipStreak + 1 : 0;
+      const headroom =
+        !slow &&
         this.currentFps > target * 0.95 &&
         cur < maxDpr &&
         (!this.mobile || this.dprDowns === 0) &&
         // above the screen's own resolution (supersampling) only with clear headroom, once
-        (cur < native - 0.01 || (this.ssDowns === 0 && this.currentFps > target * 0.97))
-      ) {
+        (cur < native - 0.01 || (this.ssDowns === 0 && this.currentFps > target * 0.97));
+      this.upStreak = headroom ? this.upStreak + 1 : 0;
+      if (slow && (severe || this.dipStreak >= 2)) {
+        const stepsDown = severe ? 2 : 1;
+        next = DPR_STEPS[Math.max(0, DPR_STEPS.indexOf(cur) - stepsDown)];
+        this.dprDowns++;
+        this.dipStreak = 0;
+        if (cur > native + 0.01) this.ssDowns++; // supersampling did not fit: never retry
+      } else if (headroom && this.upStreak >= 2) {
         next = Math.min(maxDpr, DPR_STEPS[Math.min(DPR_STEPS.length - 1, DPR_STEPS.indexOf(cur) + 1)]);
+        this.upStreak = 0;
       }
       // applied at the start of the next frame (see pendingDpr); pinned = never auto-change
       if (!this.dprPinned && Math.abs(next - this.currentDpr) >= 0.01) this.pendingDpr = next;
