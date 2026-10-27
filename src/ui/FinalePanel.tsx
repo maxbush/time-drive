@@ -27,7 +27,7 @@ export function FinalePanel({ onRestart }: { onRestart: () => void }) {
         </div>
       </section>
 
-      <aside className="card-in pointer-events-auto fixed right-4 top-[14%] z-20 w-[min(500px,46vw)] rounded-xl border border-white/10 bg-[#060a12]/75 p-7 shadow-[0_24px_70px_rgba(0,0,0,0.5)] sm:right-8 short:top-[10%] short:p-3.5">
+      <aside className="card-in pointer-events-auto fixed right-4 top-[14%] z-20 w-[min(500px,46vw)] rounded-xl border border-white/10 bg-[#060a12]/88 p-7 shadow-[0_24px_70px_rgba(0,0,0,0.5)] sm:right-8 short:top-[10%] short:p-3.5">
         <div className="mb-3 flex items-center gap-3 font-mono text-[10px] uppercase tracking-[0.24em] text-slate-400 short:mb-1.5">
           <span className="text-sky-300">{UI.discuss}</span>
           <span className="h-px flex-1 bg-white/15" />

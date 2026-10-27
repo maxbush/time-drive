@@ -54,7 +54,7 @@ export function ContactForm({
     }
   };
 
-  const field = `w-full border-0 border-b border-white/20 bg-transparent px-0 font-light text-white placeholder:text-slate-500 focus:border-amber-300 focus:outline-none ${
+  const field = `w-full border-0 border-b border-white/20 bg-transparent px-0 font-light text-white placeholder:text-slate-400 focus:border-amber-300 focus:outline-none ${
     large ? 'py-3 text-base short:py-1.5 short:text-sm' : 'py-2 text-sm'
   }`;
 

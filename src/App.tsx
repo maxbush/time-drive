@@ -24,6 +24,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [loadPct, setLoadPct] = useState(0);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [liveView, setLiveView] = useState(false); // a live site is open in the panel: freeze the 3D world
   const [contact, setContact] = useState<{ open: boolean; subject: string }>({ open: false, subject: '' });
   const flashRef = useRef<HTMLDivElement>(null);
   const flashLabelRef = useRef<HTMLDivElement>(null);
@@ -58,21 +59,34 @@ export default function App() {
   const [isPhone] = useState(
     () => forcePhone !== null || window.matchMedia('(pointer: coarse) and (hover: none)').matches
   );
-  const [portrait, setPortrait] = useState(
-    () => forcePhone === 'portrait' || window.matchMedia('(orientation: portrait)').matches
-  );
+  const isPortraitNow = () => window.innerHeight > window.innerWidth;
+  const [portrait, setPortrait] = useState(() => forcePhone === 'portrait' || isPortraitNow());
   const [portraitOk, setPortraitOk] = useState(false);
   const showRotate = isPhone && portrait && !portraitOk;
 
   useEffect(() => {
-    const mq = window.matchMedia('(orientation: portrait)');
-    const on = () => setPortrait(forcePhone === 'portrait' || mq.matches);
-    mq.addEventListener('change', on);
-    return () => mq.removeEventListener('change', on);
+    // Measured from the window size itself: the orientation media query lags on some
+    // phones, which left the hint on screen for a while after rotating. Re-checked a few
+    // times after a rotation because the browser reports the final size a moment later.
+    const timers: number[] = [];
+    const check = () => setPortrait(forcePhone === 'portrait' || window.innerHeight > window.innerWidth);
+    const onRotate = () => {
+      check();
+      for (const ms of [80, 250, 600]) timers.push(window.setTimeout(check, ms));
+    };
+    window.addEventListener('resize', check);
+    window.addEventListener('orientationchange', onRotate);
+    screen.orientation?.addEventListener?.('change', onRotate);
+    return () => {
+      window.removeEventListener('resize', check);
+      window.removeEventListener('orientationchange', onRotate);
+      screen.orientation?.removeEventListener?.('change', onRotate);
+      timers.forEach(clearTimeout);
+    };
   }, [forcePhone]);
 
   // The world pauses behind the rotate hint and behind the contact overlay.
-  const paused = showRotate || contact.open;
+  const paused = showRotate || contact.open || liveView;
   const pausedRef = useRef(false);
   pausedRef.current = paused;
   useEffect(() => {
@@ -123,6 +137,15 @@ export default function App() {
   useEffect(() => {
     setDrawerOpen(station === 'web');
   }, [station]);
+
+  // The wide sites panel covers the right half: slide the 3D view into the free left part
+  // so the stand and the car stay visible (the narrow drawers sit over empty road).
+  const sitesPanelOpen = drawerOpen && !!activeProject?.sites && hudVisible;
+  useEffect(() => {
+    const vw = window.innerWidth;
+    const panel = Math.min(680, vw * (window.innerHeight <= 480 ? 0.52 : 0.5));
+    engineRef.current?.setPanelShift(sitesPanelOpen ? (panel / vw / 2) * 0.82 : 0);
+  }, [sitesPanelOpen]);
 
   const progressPct = Math.max(
     0,
@@ -193,6 +216,7 @@ export default function App() {
             <ProjectDrawer
               project={activeProject}
               onClose={() => setDrawerOpen(false)}
+              onLive={setLiveView}
               onCta={() => openContact(activeProject.demoSubject)}
             />
           )}

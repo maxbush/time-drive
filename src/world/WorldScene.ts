@@ -517,6 +517,13 @@ export class WorldSceneEngine {
 
   /** Pause/resume the whole simulation + rendering (e.g. while asking to rotate a phone).
    *  Asset loading and shader warm-up are unaffected. */
+  private panelShift = 0; // target: fraction of the screen width the view is slid sideways
+  private panelShiftCur = 0;
+  private viewOffsetOn = false;
+  public setPanelShift(fraction: number) {
+    this.panelShift = Math.max(0, Math.min(0.4, fraction));
+  }
+
   public setPaused(p: boolean) {
     this.paused = p;
     if (!p) this.lastPerfTime = performance.now();
@@ -743,6 +750,17 @@ export class WorldSceneEngine {
     if (Math.abs(this.camera.fov - fovTarget) > 0.01) {
       this.camera.fov = fovTarget;
       this.camera.updateProjectionMatrix();
+    }
+    // A side panel covers part of the screen: slide the view so the scene (stand, car)
+    // stays centred in the free part. Eased, and cleared again once it is back to 0.
+    this.panelShiftCur += (this.panelShift - this.panelShiftCur) * (1 - Math.exp(-6 * dt));
+    if (Math.abs(this.panelShift - this.panelShiftCur) < 0.0005) this.panelShiftCur = this.panelShift;
+    if (this.panelShiftCur > 0.0005) {
+      this.camera.setViewOffset(this.viewW, this.viewH, this.panelShiftCur * this.viewW, 0, this.viewW, this.viewH);
+      this.viewOffsetOn = true;
+    } else if (this.viewOffsetOn) {
+      this.camera.clearViewOffset();
+      this.viewOffsetOn = false;
     }
     if (tr.shake > 0.002) {
       const t = this.elapsedTime;

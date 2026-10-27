@@ -59,6 +59,17 @@ function arrow(ctx: Ctx, x1: number, y1: number, x2: number, y2: number, color: 
   ctx.restore();
 }
 
+// Draws `text` at the given size, shrinking it until it fits `maxW`.
+function fitText(ctx: Ctx, text: string, x: number, y: number, maxW: number, font: (px: number) => string, px: number) {
+  let s = px;
+  ctx.font = font(s);
+  while (ctx.measureText(text).width > maxW && s > 8) {
+    s -= 0.5;
+    ctx.font = font(s);
+  }
+  ctx.fillText(text, x, y);
+}
+
 function node(
   ctx: Ctx,
   cx: number,
@@ -73,57 +84,86 @@ function node(
   const x = cx - w / 2;
   const y = cy - h / 2;
   ctx.save();
-  ctx.fillStyle = strong ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.025)';
+  ctx.fillStyle = strong ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.025)';
   ctx.strokeStyle = strong ? accent : 'rgba(255,255,255,0.28)';
-  ctx.lineWidth = strong ? 1.8 : 1.2;
+  ctx.lineWidth = strong ? 2 : 1.2;
   ctx.beginPath();
   ctx.roundRect(x, y, w, h, 8);
   ctx.fill();
   ctx.stroke();
   ctx.textAlign = 'center';
+  tracking(ctx, 0.4);
   ctx.fillStyle = '#f1f5f9';
-  ctx.font = `400 17px ${MONO}`;
-  tracking(ctx, 0.5);
-  ctx.fillText(label, cx, cy - (sub ? 2 : -6));
+  fitText(ctx, label, cx, cy - (sub ? 3 : -6), w - 18, (p) => `400 ${p}px ${MONO}`, strong ? 22 : 18);
   if (sub) {
     ctx.fillStyle = '#7d8aa0';
-    ctx.font = `300 13px ${SANS}`;
     tracking(ctx, 0);
-    ctx.fillText(sub, cx, cy + 17);
+    fitText(ctx, sub, cx, cy + 15, w - 18, (p) => `300 ${p}px ${SANS}`, 14.5);
   }
   ctx.restore();
 }
 
-function drawAlbion(ctx: Ctx, accent: string, soft: string) {
-  const y = 410;
-  node(ctx, 150, y, 190, 62, 'MeritHub', 'расписание, занятия', accent);
-  node(ctx, 470, y, 190, 70, 'ALBION', 'ассистент координатора', accent, true);
-  node(ctx, 800, y - 62, 210, 56, 'Родитель', 'WhatsApp · Telegram', accent);
-  node(ctx, 800, y + 62, 210, 56, 'Координатор', 'эскалация при молчании', accent);
-  arrow(ctx, 247, y, 372, y, soft);
-  arrow(ctx, 567, y - 12, 692, y - 58, soft);
-  arrow(ctx, 567, y + 12, 692, y + 58, soft, [6, 5]);
+// elbow connector: through the given points, arrowhead on the last segment
+function path(ctx: Ctx, pts: [number, number][], color: string, dash?: number[]) {
+  for (let i = 0; i < pts.length - 2; i++) line(ctx, pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1], color, 1.5, dash);
+  const [a, b] = [pts[pts.length - 2], pts[pts.length - 1]];
+  arrow(ctx, a[0], a[1], b[0], b[1], color, dash);
+}
+
+function tag(ctx: Ctx, text: string, x: number, y: number) {
   ctx.save();
-  ctx.fillStyle = '#7d8aa0';
-  ctx.font = `300 12px ${MONO}`;
+  ctx.fillStyle = '#6f7d93';
+  ctx.font = `300 11px ${MONO}`;
   tracking(ctx, 1.2);
   ctx.textAlign = 'center';
-  ctx.fillText('НЕЯВКА', 310, y - 12);
-  ctx.fillText('ЕСЛИ НЕТ ОТВЕТА', 640, y + 30);
+  ctx.fillText(text, x, y);
   ctx.restore();
 }
 
-function drawTenders(ctx: Ctx, accent: string, soft: string) {
-  const y = 415;
-  node(ctx, 112, y, 156, 64, 'gias.by', 'API закупок', accent);
-  node(ctx, 330, y, 156, 64, 'База данных', 'закупки · планы', accent);
-  node(ctx, 590, y, 210, 92, 'Анализ', 'конкуренты · планы · приоритет', accent, true);
-  node(ctx, 880, y, 156, 64, 'Отчёты', 'Excel · бот · дашборд', accent);
-  arrow(ctx, 192, y, 250, y, soft);
-  arrow(ctx, 410, y, 484, y, soft);
-  arrow(ctx, 696, y, 800, y, soft);
+// ALBION: the assistant at the centre, MeritHub and the LLM feeding it, its own database
+// underneath, two messengers on the right that reach the people (and the answer comes back).
+function drawAlbion(ctx: Ctx, accent: string, soft: string) {
+  node(ctx, 135, 345, 190, 54, 'MeritHub', 'расписание · API', accent);
+  node(ctx, 135, 465, 190, 54, 'ИИ · LLM', 'разбор заявок', accent);
+  node(ctx, 460, 405, 230, 104, 'ALBION', 'сценарии · роли · эскалация', accent, true);
+  node(ctx, 460, 522, 190, 44, 'Своя база данных', 'события · очередь · журнал', accent);
+  node(ctx, 745, 335, 150, 50, 'Telegram', 'уведомления', accent);
+  node(ctx, 905, 335, 150, 50, 'WhatsApp', 'уведомления', accent);
+  node(ctx, 825, 478, 290, 56, 'Родители · репетиторы · координатор', '', accent);
+
+  path(ctx, [[230, 345], [300, 345], [300, 385], [345, 385]], soft);
+  path(ctx, [[230, 465], [300, 465], [300, 425], [345, 425]], soft);
+  arrow(ctx, 440, 457, 440, 500, soft);
+  arrow(ctx, 480, 500, 480, 457, soft);
+  path(ctx, [[575, 385], [620, 385], [620, 335], [670, 335]], soft);
+  path(ctx, [[575, 400], [905, 400], [905, 361]], soft);
+  arrow(ctx, 745, 360, 745, 450, soft);
+  arrow(ctx, 905, 400, 905, 450, soft);
+  path(ctx, [[680, 505], [568, 505], [568, 457]], soft, [6, 5]);
+  tag(ctx, 'ОТВЕТ', 624, 522);
 }
 
+// Tenders: gias.by -> own database -> analysis -> REST API -> web UI / Telegram, and
+// Excel reports straight from the analysis.
+function drawTenders(ctx: Ctx, accent: string, soft: string) {
+  const y = 405;
+  node(ctx, 110, y, 120, 58, 'gias.by', 'закупки · планы', accent);
+  node(ctx, 305, y, 140, 58, 'Своя база', 'SQLite', accent);
+  node(ctx, 520, y, 190, 90, 'Аналитика', 'ОКРБ · приоритет · конкуренты', accent, true);
+  node(ctx, 705, y, 100, 58, 'REST API', 'FastAPI', accent);
+  node(ctx, 895, 335, 170, 54, 'Веб-интерфейс', 'дашборд · React', accent);
+  node(ctx, 895, 405, 170, 54, 'Telegram', 'профиль · планы', accent);
+  node(ctx, 895, 485, 170, 54, 'Excel-отчёты', 'для руководителя', accent);
+
+  arrow(ctx, 170, y, 235, y, soft);
+  arrow(ctx, 375, y, 425, y, soft);
+  arrow(ctx, 615, y, 655, y, soft);
+  path(ctx, [[755, y - 12], [790, y - 12], [790, 335], [810, 335]], soft);
+  arrow(ctx, 755, y + 2, 810, y + 2, soft);
+  path(ctx, [[520, y + 45], [520, 485], [810, 485]], soft);
+  tag(ctx, 'ИМПОРТ', 202, y - 9);
+  tag(ctx, 'ОТЧЁТЫ', 680, 478);
+}
 function drawMetrics(ctx: Ctx, metrics: string[], accent: string) {
   const n = Math.max(1, metrics.length);
   const gap = 36;
@@ -215,9 +255,8 @@ export function createStandTexture(opts: StandOptions, anisotropy = 8): THREE.Ca
 
   // title + subtitle
   ctx.fillStyle = '#f8fafc';
-  ctx.font = `200 82px ${SANS}`;
   tracking(ctx, -1);
-  ctx.fillText(opts.title, 60, 188);
+  fitText(ctx, opts.title, 60, 188, DW - 120, (p) => `200 ${p}px ${SANS}`, 82);
   ctx.fillStyle = '#9aa7bb';
   ctx.font = `300 25px ${SANS}`;
   tracking(ctx, 0);

@@ -5,24 +5,40 @@ const label = 'font-mono text-[10px] uppercase tracking-[0.24em] text-slate-500'
 const link =
   'border-b border-white/35 pb-0.5 font-mono text-[11px] uppercase tracking-[0.18em] text-white transition hover:border-amber-300 hover:text-amber-200';
 
+type Mode = 'live' | 'shots';
+
+const isTouch = () => window.matchMedia?.('(pointer: coarse) and (hover: none)').matches ?? false;
+
 // Side panel of a stop: full height on the right, about a third to a half of the screen.
 // The website stop opens it by itself on arrival: previews of the sites first, and a
-// click opens one site in detail (big screenshots + a link to the live site). The other
-// stops open it from "Подробнее" with the project description.
+// click opens one site in detail as a live, scrollable window (or as screenshots) so
+// things like the parallax hero can be seen working. The other stops open it from
+// "Подробнее" with the project description and its components.
 // The scene stays visible (dimmed) on the left; Esc steps back / closes.
 export function ProjectDrawer({
   project,
   onClose,
   onCta,
+  onLive,
 }: {
   project: ProjectContent;
   onClose: () => void;
   onCta: () => void;
+  onLive: (live: boolean) => void;
 }) {
   const scroller = useRef<HTMLElement | null>(null);
   const [siteIdx, setSiteIdx] = useState<number | null>(null);
+  const [mode, setMode] = useState<Mode>('shots');
+  const [frameLoaded, setFrameLoaded] = useState(false);
   const sites = project.sites;
   const site: SiteContent | null = sites && siteIdx !== null ? sites[siteIdx] : null;
+
+  const openSite = (i: number) => {
+    const s = sites![i];
+    setMode(s.live && !isTouch() ? 'live' : 'shots');
+    setFrameLoaded(false);
+    setSiteIdx(i);
+  };
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -34,10 +50,31 @@ export function ProjectDrawer({
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose, site]);
 
+  // A live site shares the page's main thread: freeze the 3D world while it is shown.
+  const live = site !== null && mode === 'live';
+  useEffect(() => {
+    onLive(live);
+    return () => onLive(false);
+  }, [live, onLive]);
+
   // switching between list and a site starts from the top
   useEffect(() => {
     scroller.current?.scrollTo({ top: 0 });
   }, [siteIdx]);
+
+  const toggle = (m: Mode, text: string) => (
+    <button
+      onClick={() => {
+        setMode(m);
+        setFrameLoaded(false);
+      }}
+      className={`border-b pb-0.5 font-mono text-[11px] uppercase tracking-[0.18em] transition ${
+        mode === m ? 'border-amber-300 text-white' : 'border-transparent text-slate-500 hover:text-slate-200'
+      }`}
+    >
+      {text}
+    </button>
+  );
 
   return (
     <>
@@ -45,11 +82,11 @@ export function ProjectDrawer({
       <div className="pointer-events-none fixed inset-0 z-20 bg-gradient-to-r from-black/0 via-black/20 to-black/55" />
       <aside
         ref={scroller}
-        className={`drawer-in pointer-events-auto fixed bottom-0 right-0 top-0 z-30 overflow-y-auto border-l border-white/10 bg-[#060a12]/95 px-6 pb-8 pt-5 sm:px-8 ${
-          sites ? 'w-[min(640px,48vw)] short:w-[50vw]' : 'w-[min(460px,94vw)]'
+        className={`drawer-in pointer-events-auto fixed bottom-0 right-0 top-0 z-30 flex flex-col overflow-y-auto border-l border-white/10 bg-[#060a12]/95 px-6 pb-6 pt-5 sm:px-8 ${
+          sites ? 'w-[min(680px,50vw)] short:w-[52vw]' : 'w-[min(460px,94vw)]'
         }`}
       >
-        <div className="flex items-center justify-between border-b border-white/10 pb-3">
+        <div className="flex shrink-0 items-center justify-between border-b border-white/10 pb-3">
           {site ? (
             <button
               onClick={() => setSiteIdx(null)}
@@ -72,29 +109,77 @@ export function ProjectDrawer({
 
         {/* ---- one site in detail ---- */}
         {site && (
-          <section className="mt-6 short:mt-3">
-            <div className={label}>{site.kind}</div>
-            <h2 className="mt-2 text-[30px] font-extralight leading-[1.05] tracking-tight text-white sm:text-[36px] short:text-[24px]">
-              {site.name}
-            </h2>
-            <p className="mt-3 text-sm font-light leading-relaxed text-slate-300">{site.description}</p>
-            <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2">
-              <a href={site.url} target="_blank" rel="noreferrer" className={link}>
+          <section className="mt-5 flex min-h-0 flex-1 flex-col short:mt-3">
+            <div className="flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <div className={label}>{site.kind}</div>
+                <h2 className="mt-1.5 text-[28px] font-extralight leading-[1.05] tracking-tight text-white sm:text-[32px] short:text-[22px]">
+                  {site.name}
+                </h2>
+              </div>
+              <a href={site.url} target="_blank" rel="noreferrer" className={`${link} mt-1 shrink-0`}>
                 {UI.openSite} ↗
               </a>
-              <span className="font-mono text-[10px] tracking-wider text-slate-500">{site.domain}</span>
             </div>
-            <div className="mt-5 space-y-3">
-              {site.slides.map((src, k) => (
-                <img
-                  key={src}
-                  src={src}
-                  alt={`${site.name}: экран ${k + 1}`}
-                  loading="lazy"
-                  className="w-full rounded-md border border-white/10"
+            <p
+              className={`mt-3 text-[13px] font-light leading-relaxed text-slate-300 short:hidden ${
+                mode === 'live' ? 'line-clamp-2' : ''
+              }`}
+            >
+              {site.description}
+            </p>
+            {site.highlight && (
+              <p className="mt-2 border-l border-amber-300/60 pl-3 text-[12px] font-light leading-relaxed text-amber-100/90">
+                {site.highlight}
+              </p>
+            )}
+
+            <div className="mt-4 flex items-center gap-5">
+              {toggle('live', UI.viewLive)}
+              {toggle('shots', UI.viewShots)}
+              <span className="ml-auto hidden font-mono text-[10px] tracking-wider text-slate-600 sm:block">
+                {site.domain}
+              </span>
+            </div>
+
+            {mode === 'live' ? (
+              <div className="relative mt-3 flex min-h-[55vh] flex-1 flex-col overflow-hidden rounded-md border border-white/15 bg-white">
+                <div className="flex shrink-0 items-center gap-1.5 bg-slate-800 px-3 py-1.5">
+                  <span className="h-2 w-2 rounded-full bg-rose-400/80" />
+                  <span className="h-2 w-2 rounded-full bg-amber-300/80" />
+                  <span className="h-2 w-2 rounded-full bg-emerald-400/80" />
+                  <span className="ml-3 truncate font-mono text-[10px] text-slate-300">{site.domain}</span>
+                </div>
+                {!frameLoaded && (
+                  <div className="absolute inset-x-0 top-9 bottom-0 flex items-center justify-center bg-[#0a0f18] font-mono text-[11px] uppercase tracking-[0.25em] text-slate-400">
+                    Загружаем сайт…
+                  </div>
+                )}
+                <iframe
+                  key={site.id}
+                  src={site.url}
+                  title={site.name}
+                  referrerPolicy="no-referrer"
+                  onLoad={() => setFrameLoaded(true)}
+                  className="min-h-0 w-full flex-1 border-0 bg-white"
                 />
-              ))}
-            </div>
+              </div>
+            ) : (
+              <div className="mt-3 space-y-3">
+                {site.slides.map((src, k) => (
+                  <img
+                    key={src}
+                    src={src}
+                    alt={`${site.name}: экран ${k + 1}`}
+                    loading="lazy"
+                    className="w-full rounded-md border border-white/10"
+                  />
+                ))}
+                <p className="pb-1 text-center text-[11px] text-slate-500">
+                  Снимки экрана. Чтобы полистать сайт самому, выберите «{UI.viewLive}».
+                </p>
+              </div>
+            )}
           </section>
         )}
 
@@ -111,10 +196,10 @@ export function ProjectDrawer({
               {sites.map((s, i) => (
                 <li key={s.id}>
                   <button
-                    onClick={() => setSiteIdx(i)}
+                    onClick={() => openSite(i)}
                     className="group flex w-full gap-4 rounded-lg border border-white/10 bg-white/[0.02] p-2.5 text-left transition hover:border-amber-300/50 hover:bg-white/[0.05]"
                   >
-                    <span className="block aspect-[16/10] w-[42%] shrink-0 overflow-hidden rounded-md border border-white/10 bg-slate-900">
+                    <span className="block aspect-[16/10] w-[40%] shrink-0 overflow-hidden rounded-md border border-white/10 bg-slate-900">
                       <img
                         src={s.slides[0]}
                         alt={s.name}
@@ -163,8 +248,22 @@ export function ProjectDrawer({
               <p className="mt-2.5 text-sm font-light leading-relaxed text-slate-300">{project.description}</p>
             </section>
 
+            {project.parts && (
+              <section className="mt-7">
+                <h3 className={label}>{UI.partsTitle}</h3>
+                <ul className="mt-3 grid grid-cols-2 gap-2">
+                  {project.parts.map(([name, role]) => (
+                    <li key={name} className="rounded-md border border-white/10 bg-white/[0.025] px-3 py-2.5">
+                      <div className="font-mono text-[11px] uppercase tracking-[0.1em] text-amber-100">{name}</div>
+                      <div className="mt-1 text-[12px] font-light leading-snug text-slate-400">{role}</div>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
+
             <section className="mt-7">
-              <h3 className={label}>Что делаю</h3>
+              <h3 className={label}>Что умеет</h3>
               <ul className="mt-3 space-y-2">
                 {project.points.map((p) => (
                   <li key={p} className="flex gap-3 text-sm font-light text-slate-200">
@@ -184,12 +283,14 @@ export function ProjectDrawer({
           </>
         )}
 
+        {!live && (
         <button
           onClick={onCta}
-          className="mt-8 h-11 w-full border border-white/30 font-mono text-[11px] uppercase tracking-[0.22em] text-white transition hover:bg-white hover:text-slate-950"
+          className="mt-6 h-11 w-full shrink-0 border border-white/30 font-mono text-[11px] uppercase tracking-[0.22em] text-white transition hover:bg-white hover:text-slate-950"
         >
           {project.cta} →
         </button>
+        )}
       </aside>
     </>
   );
