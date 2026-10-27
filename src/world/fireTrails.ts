@@ -43,6 +43,10 @@ export function createFireTrails(scene: THREE.Scene): FireTrails {
   const mat = new THREE.ShaderMaterial({
     transparent: true,
     depthWrite: false,
+    // A point sprite is one flat quad at the particle's centre depth: with the depth test on, the
+    // road surface in front of it sliced every flame along a hard horizontal line (the
+    // "stair-stepped / pixelated fire"). The trail is always behind-and-above the road anyway.
+    depthTest: false,
     blending: THREE.AdditiveBlending,
     fog: false,
     uniforms: {
@@ -82,7 +86,8 @@ export function createFireTrails(scene: THREE.Scene): FireTrails {
       void main() {
         vec2 c = gl_PointCoord - 0.5;
         float d = length(c) * 2.0;
-        float a = smoothstep(1.0, 0.15, d);
+        // (smoothstep with edge0 > edge1 is undefined in GLSL: on some GPUs it made every flame a hard square)
+        float a = 1.0 - smoothstep(0.15, 1.0, d);
         float t = clamp(vT, 0.0, 1.0);
         // Orange fire from the first frame: HDR white here just blooms into a
         // headlight-like glare, which is NOT what flames look like.

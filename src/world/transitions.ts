@@ -301,9 +301,12 @@ const TransitionShader = {
       float strength = uWarp * 0.06 * smoothstep(0.05, 0.75, r);
       float ca = uWarp * 0.012 * smoothstep(0.1, 0.8, r);
       vec3 col = vec3(0.0);
-      const int TAPS = 6;
+      // Few taps along the blur make bright things (the fire under the car) show as stair-steps /
+      // blocks: more taps, each pixel offset by a little noise so the steps dissolve into grain.
+      const int TAPS = 10;
+      float jit = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));
       for (int i = 0; i < TAPS; i++) {
-        float t = float(i) / float(TAPS - 1);
+        float t = (float(i) + jit) / float(TAPS);
         float sc = 1.0 - strength * t;
         col.r += texture2D(tDiffuse, 0.5 + c * (sc + ca)).r;
         col.g += texture2D(tDiffuse, 0.5 + c * sc).g;

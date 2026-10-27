@@ -84,7 +84,7 @@ function createSkyShaderMaterial(): THREE.ShaderMaterial {
           vec2 cloudUv = dir.xz / (dir.y + 0.18) * 1.4 + vec2(uTime * 0.0022, -uTime * 0.0011);
           float c1 = noise2(cloudUv * vec2(2.2, 6.5));
           float c2 = noise2(cloudUv * vec2(5.5, 13.0) + 3.1);
-          float cirrus = smoothstep(0.54, 0.86, c1 * 0.68 + c2 * 0.32) * smoothstep(0.03, 0.22, dir.y) * smoothstep(0.75, 0.25, dir.y);
+          float cirrus = smoothstep(0.54, 0.86, c1 * 0.68 + c2 * 0.32) * smoothstep(0.03, 0.22, dir.y) * (1.0 - smoothstep(0.25, 0.75, dir.y));
           vec3 cirrusTint = mix(vec3(0.16, 0.25, 0.42), vec3(0.68, 0.46, 0.38), pow(sunAlign, 2.0) * (1.0 - dir.y));
           sky = mix(sky, cirrusTint, cirrus * 0.34 * glowScale);
         }
@@ -100,7 +100,7 @@ function createSkyShaderMaterial(): THREE.ShaderMaterial {
 
         if (dir.y < 0.0) {
           vec3 cityBounce = mix(vec3(0.12, 0.10, 0.09), vec3(0.03, 0.05, 0.09), clamp(-dir.y * 4.0, 0.0, 1.0));
-          sky = mix(sky, cityBounce, smoothstep(0.0, -0.12, dir.y));
+          sky = mix(sky, cityBounce, (1.0 - smoothstep(-0.12, 0.0, dir.y)));
         }
 
         gl_FragColor = vec4(sky, 1.0);

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { ProjectContent, SiteContent, UI } from '../content';
 import { renderStandImage, StandOptions } from '../world/standTexture';
+import { SchemaViewer } from './SchemaViewer';
 
 const label = 'font-mono text-[10px] uppercase tracking-[0.24em] text-slate-500';
 const link =
@@ -61,9 +62,9 @@ export function ProjectDrawer({
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.code !== 'Escape') return;
-      if (zoom) setZoom(false);
-      else if (site) setSiteIdx(null);
+      if (!(e.code === 'Escape' || e.key === 'Escape')) return;
+      if (zoom) return; // the viewer handles its own Esc
+      if (site) setSiteIdx(null);
       else onClose();
     };
     window.addEventListener('keydown', onKey);
@@ -86,7 +87,7 @@ export function ProjectDrawer({
   const left = project.side === 'left' && !site;
   const panelCls = site
     ? 'fixed inset-2 sm:inset-4 z-30 rounded-xl border border-white/15 flex flex-col bg-[#060a12]/97'
-    : `fixed bottom-0 top-0 z-30 flex w-[min(680px,50vw)] flex-col overflow-y-auto border-white/10 bg-[#060a12]/95 px-6 pb-6 pt-5 short:w-[52vw] sm:px-8 ${
+    : `fixed bottom-0 top-0 z-30 flex w-[min(680px,50vw)] flex-col overflow-y-auto border-white/10 bg-[#060a12]/95 px-6 pb-24 pt-5 short:w-[52vw] sm:px-8 ${
         left ? 'left-0 border-r' : 'right-0 border-l'
       }`;
 
@@ -289,14 +290,7 @@ export function ProjectDrawer({
           </>
         )}
 
-        {zoom && schemaUrl && (
-          <div
-            className="fixed inset-0 z-[45] flex cursor-zoom-out items-center justify-center bg-black/85 p-3"
-            onClick={() => setZoom(false)}
-          >
-            <img src={schemaUrl} alt={project.title} className="schema-pop max-h-[94vh] max-w-[96vw] rounded-lg" />
-          </div>
-        )}
+        {zoom && schemaUrl && <SchemaViewer src={schemaUrl} alt={project.title} onClose={() => setZoom(false)} />}
 
         {!site && (
           <button

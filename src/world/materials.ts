@@ -527,8 +527,8 @@ export function createMaterialPalette(
           float wash = 0.62 + 0.38 * smoothstep(0.0, 1.0, vUv.y); // ceiling-wash feel
           vec3 roomC = mix(unlit, warmC * (0.40 + 0.28 * hash11(vRoomMeta.x + 4.1)) * wash, clamp(lit, 0.0, 1.2));
           if (vBlindDrop > 0.02 && vUv.y > (1.0 - vBlindDrop)) roomC *= 0.35;
-          float edge = smoothstep(0.0, 0.06, vUv.x) * smoothstep(1.0, 0.94, vUv.x)
-                     * smoothstep(0.0, 0.06, vUv.y) * smoothstep(1.0, 0.94, vUv.y);
+          float edge = smoothstep(0.0, 0.06, vUv.x) * (1.0 - smoothstep(0.94, 1.0, vUv.x))
+                     * smoothstep(0.0, 0.06, vUv.y) * (1.0 - smoothstep(0.94, 1.0, vUv.y));
           roomC *= 0.7 + 0.3 * edge;
           vec3 Vm = normalize(vWorldPos - cameraPosition);
           float ndv = clamp(dot(-Vm, normalize(vWorldNormal)), 0.0, 1.0);
@@ -577,12 +577,12 @@ export function createMaterialPalette(
         float fixtureGlow = 0.0;
         if (hitCeiling) {
           if (stylePick < 0.45) {
-            float strip = smoothstep(0.09, 0.02, abs(hit.x - 0.5)) * smoothstep(0.65, 0.48, abs(hit.z - roomDepth * 0.48));
+            float strip = (1.0 - smoothstep(0.02, 0.09, abs(hit.x - 0.5))) * (1.0 - smoothstep(0.48, 0.65, abs(hit.z - roomDepth * 0.48)));
             fixtureGlow = strip * 1.55;
           } else {
             float d1 = length(vec2(hit.x - 0.32, hit.z - roomDepth * 0.45));
             float d2 = length(vec2(hit.x - 0.68, hit.z - roomDepth * 0.45));
-            fixtureGlow = (smoothstep(0.11, 0.03, d1) + smoothstep(0.11, 0.03, d2)) * 1.45;
+            fixtureGlow = ((1.0 - smoothstep(0.03, 0.11, d1)) + (1.0 - smoothstep(0.03, 0.11, d2))) * 1.45;
           }
           float ceilFalloff = 1.0 - 0.42 * (hit.z / roomDepth);
           roomCol = mix(unlitAmbient * 0.85, warmColor * (0.30 + fixtureGlow * 0.62) * ceilFalloff, clamp(lit, 0.0, 1.2));
@@ -620,8 +620,8 @@ export function createMaterialPalette(
           roomCol = mix(roomCol * 0.22, blindCol * slats, 0.84);
         }
 
-        float paneEdge = smoothstep(0.0, 0.045, vUv.x) * smoothstep(1.0, 0.955, vUv.x)
-                       * smoothstep(0.0, 0.045, vUv.y) * smoothstep(1.0, 0.955, vUv.y);
+        float paneEdge = smoothstep(0.0, 0.045, vUv.x) * (1.0 - smoothstep(0.955, 1.0, vUv.x))
+                       * smoothstep(0.0, 0.045, vUv.y) * (1.0 - smoothstep(0.955, 1.0, vUv.y));
         roomCol *= (0.68 + 0.32 * paneEdge);
 
         vec3 reflDir = reflect(V, N);

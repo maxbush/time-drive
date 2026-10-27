@@ -6,7 +6,7 @@ import { ContactForm } from './ContactForm';
 export function ContactPanel({ subject, onClose }: { subject: string; onClose: () => void }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.code === 'Escape') onClose();
+      if ((e.code === 'Escape' || e.key === 'Escape')) onClose();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);

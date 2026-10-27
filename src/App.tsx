@@ -306,6 +306,7 @@ export default function App() {
               autoCruise={telemetry.autoCruise}
               onJump={(id) => engine()?.jumpToZone(id)}
               onToggle={() => engine()?.toggleAutoCruise()}
+              hideNext={liveView}
             />
           </div>
         </>

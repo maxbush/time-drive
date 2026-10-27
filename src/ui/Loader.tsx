@@ -16,11 +16,19 @@ export function Loader({ visible, pct }: { visible: boolean; pct: number }) {
 
   useEffect(() => {
     if (!visible) return;
+    const t0 = performance.now();
     const id = window.setInterval(() => {
-      const target = Math.max(6, Math.min(88, (pctRef.current / 100) * 88));
+      // The needle climbs by itself towards 85 mph (ease-out, ~10 s to be near it), so it never
+      // hangs near zero while the real loading is slow or stuck in a heavy step; the real
+      // progress can only push it further (to 88 once everything has loaded).
+      const t = (performance.now() - t0) / 1000;
+      const base = 85 * (1 - Math.exp(-t / 3.5));
+      const p = pctRef.current;
+      const real = p >= 100 ? 88 : Math.min(85, p * 0.85);
+      const target = Math.max(base, real);
       const cur = speedRef.current;
-      let next = cur + (target - cur) * 0.2;
-      if (target - next < 0.15) next = target;
+      let next = cur + (target - cur) * 0.18;
+      if (target - next < 0.1) next = target;
       speedRef.current = next;
       setSpeed((s) => (Math.abs(s - next) < 0.05 ? s : next));
     }, 100);
@@ -37,7 +45,11 @@ export function Loader({ visible, pct }: { visible: boolean; pct: number }) {
 
   // Dial geometry: 240 deg sweep, from -120 to +120.
   const needleAngle = -120 + (speed / 88) * 240;
-  const arcR = 86;
+  const arcR = 80;
+  // arc from the lower left over the top to the lower right (240 deg), centre (100, 92)
+  const arcStart = { x: 100 - arcR * Math.cos(Math.PI / 6), y: 92 + arcR * Math.sin(Math.PI / 6) };
+  const arcEnd = { x: 100 + arcR * Math.cos(Math.PI / 6), y: arcStart.y };
+  const arcD = `M ${arcStart.x} ${arcStart.y} A ${arcR} ${arcR} 0 1 1 ${arcEnd.x} ${arcEnd.y}`;
   const arcLen = Math.PI * arcR * (240 / 180);
 
   return (
@@ -70,15 +82,15 @@ export function Loader({ visible, pct }: { visible: boolean; pct: number }) {
         <h1 className="mt-4 text-3xl font-semibold tracking-tight text-white sm:text-5xl">{OWNER.name}</h1>
         <p className="mt-3 font-mono text-[11px] uppercase tracking-[0.28em] text-slate-400">{OWNER.role}</p>
 
-        <div className="relative mt-6 aspect-[200/128] w-72 sm:w-96">
-          <svg viewBox="0 0 200 128" className="absolute inset-0 h-full w-full" aria-hidden="true">
+        <div className="relative mt-6 aspect-[200/150] w-72 sm:w-96">
+          <svg viewBox="0 0 200 150" className="absolute inset-0 h-full w-full" aria-hidden="true">
             {Array.from({ length: 12 }, (_, i) => {
-              const a = (-120 + i * (240 / 11)) * (Math.PI / 180);
+              const a = (150 + i * (240 / 11)) * (Math.PI / 180);
               const big = i % 2 === 0;
-              const x1 = 100 + Math.cos(a) * 78;
-              const y1 = 108 + Math.sin(a) * 78;
-              const x2 = 100 + Math.cos(a) * (big ? 66 : 71);
-              const y2 = 108 + Math.sin(a) * (big ? 66 : 71);
+              const x1 = 100 + Math.cos(a) * 74;
+              const y1 = 92 + Math.sin(a) * 74;
+              const x2 = 100 + Math.cos(a) * (big ? 62 : 67);
+              const y2 = 92 + Math.sin(a) * (big ? 62 : 67);
               return (
                 <line
                   key={i}
@@ -92,13 +104,13 @@ export function Loader({ visible, pct }: { visible: boolean; pct: number }) {
               );
             })}
             <path
-              d={`M ${100 - arcR} 108 A ${arcR} ${arcR} 0 1 1 ${100 + arcR} 108`}
+              d={arcD}
               fill="none"
               stroke="rgba(255,255,255,0.10)"
               strokeWidth="3"
             />
             <path
-              d={`M ${100 - arcR} 108 A ${arcR} ${arcR} 0 1 1 ${100 + arcR} 108`}
+              d={arcD}
               fill="none"
               stroke="url(#speedGrad)"
               strokeWidth="3"
@@ -112,12 +124,12 @@ export function Loader({ visible, pct }: { visible: boolean; pct: number }) {
                 <stop offset="100%" stopColor="#f59e0b" />
               </linearGradient>
             </defs>
-            <text x="100" y="86" textAnchor="middle" fill="#f8fafc" fontSize="24" fontFamily="monospace" fontWeight="700">
+            <text x="100" y="128" textAnchor="middle" fill="#f8fafc" fontSize="22" fontFamily="monospace" fontWeight="700">
               {Math.round(speed)}
             </text>
             <text
               x="100"
-              y="100"
+              y="141"
               textAnchor="middle"
               fill="rgba(148,163,184,0.8)"
               fontSize="8"
@@ -129,11 +141,11 @@ export function Loader({ visible, pct }: { visible: boolean; pct: number }) {
           </svg>
 
           {/* needle: HTML so its rotation + idle shake run on the compositor */}
-          <div className="absolute" style={{ left: '50%', top: '84.375%' }}>
-            <div style={{ transform: `rotate(${needleAngle}deg)`, transition: 'transform 0.5s linear' }}>
+          <div className="absolute" style={{ left: '50%', top: '61.333%' }}>
+            <div style={{ transform: `rotate(${needleAngle}deg)`, transition: 'transform 0.4s linear' }}>
               <div className="needle-idle">
                 <div
-                  className="absolute h-[6.66rem] rounded-full bg-amber-500 sm:h-[8.88rem]"
+                  className="absolute h-[5.9rem] rounded-full bg-amber-500 sm:h-[7.87rem]"
                   style={{ width: 3, left: -1.5, bottom: 0 }}
                 />
               </div>
