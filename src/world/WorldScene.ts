@@ -128,9 +128,10 @@ const CHASE_CAM = {
 // At a stop the camera slowly drifts to a 3/4 angle toward the project (sign =
 // side of the avenue the project is on), keeping both the car and the project in frame.
 const STATION_STOPS: Array<{ id: Exclude<ProjectStationId, null>; stopZ: number; camYaw: number }> = [
-  { id: 'web', stopZ: -82, camYaw: 0.34 },
-  { id: 'albion', stopZ: -210, camYaw: 0.4 },
-  { id: 'tenders', stopZ: -332, camYaw: -0.34 },
+  // Wide enough that the whole stand of the stop is in frame (they were cropped at 0.34)
+  { id: 'web', stopZ: -82, camYaw: 0.74 },
+  { id: 'albion', stopZ: -210, camYaw: 0.74 },
+  { id: 'tenders', stopZ: -332, camYaw: -0.74 },
 ];
 
 // While parked at a project the camera also pulls back / lifts and aims nearer to

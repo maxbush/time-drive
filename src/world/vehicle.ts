@@ -895,8 +895,8 @@ export function createVehicleController(
 
       // Transition glow (blue underglow + aura), with a fast electric flicker
       const fxPulse = 0.86 + 0.14 * Math.sin(exhaustTime * 38) * Math.sin(exhaustTime * 11.7);
-      underMat.opacity = fxLevel * 0.95 * fxPulse;
-      auraMat.opacity = fxLevel * 0.4 * fxPulse;
+      underMat.opacity = fxLevel * 0.7 * fxPulse;
+      auraMat.opacity = fxLevel * 0.22 * fxPulse;
       // contact shadow only while the car is actually on the road
       csMat.opacity = 0.55 * THREE.MathUtils.clamp(1 - pitchAngle * 6, 0, 1) * THREE.MathUtils.clamp(1 - root.position.y / 1.5, 0, 1);
 

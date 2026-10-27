@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { MaterialPalette } from './materials';
 import { mergeIntoChunks } from './chunkedMerge';
-import { createPastRoadSignTexture, createShowcaseScreenTexture, createSignageTexture } from './textures';
+import { createPastRoadSignTexture, createSignageTexture } from './textures';
+import { createStandTexture, StandDiagram } from './standTexture';
 
 export type MatKey =
   | 'limestone'
@@ -330,20 +331,26 @@ export class ArchitectureBuilder {
       metrics: string[];
       accentHex: string;
       secondaryHex: string;
+      diagram?: StandDiagram;
     },
     // Optional live texture (e.g. the browser-window site screen); replaces the
     // drawn title card.
     customMap?: THREE.Texture
   ) {
-    const tex = customMap ?? createShowcaseScreenTexture(opts, this.anisotropy);
-    const mat = new THREE.MeshStandardMaterial({
-      map: tex,
-      emissiveMap: tex,
-      emissive: new THREE.Color('#ffffff'),
-      emissiveIntensity: 0.95,
-      roughness: 0.18,
-      metalness: 0.2,
-    });
+    const tex = customMap ?? createStandTexture(opts, this.anisotropy);
+    // A website screenshot is mostly white: lit + emissive PBR pushed it far past 1.0
+    // (washed out, blooming). Show it unlit, slightly dimmed, so it reads like a
+    // real display. The dark title stands keep the glowing PBR look.
+    const mat: THREE.Material = customMap
+      ? new THREE.MeshBasicMaterial({ map: tex, color: new THREE.Color(0.82, 0.82, 0.82) })
+      : new THREE.MeshStandardMaterial({
+          map: tex,
+          emissiveMap: tex,
+          emissive: new THREE.Color('#ffffff'),
+          emissiveIntensity: 0.95,
+          roughness: 0.18,
+          metalness: 0.2,
+        });
     const mesh = new THREE.Mesh(new THREE.PlaneGeometry(width, height), mat);
     mesh.position.set(cx, cy, cz);
     mesh.rotation.y = rotY;

@@ -4,6 +4,7 @@ import { MaterialPalette } from './materials';
 import { mulberry32 } from './textures';
 import { TreePlacement } from './trees';
 import { createSiteScreen, SiteScreen } from './siteScreen';
+import type { StandDiagram } from './standTexture';
 
 interface FacadeAxis {
   nx: number;
@@ -696,6 +697,7 @@ function buildDesignerProjectTotem(
     accentHex: string;
     secondaryHex: string;
     customMap?: THREE.Texture;
+    diagram?: StandDiagram;
   }
 ) {
   const isWest = opts.side === 'WEST';
@@ -731,6 +733,7 @@ function buildDesignerProjectTotem(
       metrics: opts.metrics,
       accentHex: opts.accentHex,
       secondaryHex: opts.secondaryHex,
+      diagram: opts.diagram,
     },
     opts.customMap
   );
@@ -1069,10 +1072,11 @@ function buildCluster2AlbionAndSpindle(b: ArchitectureBuilder, treePlacements: T
     z: -222,
     era: 'ПРОЕКТ 02 // АВТОМАТИЗАЦИЯ',
     title: 'ALBION BOT',
-    subtitle: 'Расписание MeritHub → уведомления в WhatsApp и Telegram',
-    metrics: ['MERITHUB|синхронизация по API', 'WHATSAPP|ученикам', 'TELEGRAM|координатору'],
+    subtitle: 'Ассистент координатора репетиторов',
+    metrics: ['MERITHUB|интеграция по API', 'TELEGRAM|уведомления', 'AI|заявки и сценарии'],
     accentHex: '#38bdf8',
     secondaryHex: '#f59e0b',
+    diagram: 'albion',
   });
 }
 
@@ -1206,10 +1210,11 @@ function buildCluster3TendersAndContinuum(b: ArchitectureBuilder, treePlacements
     z: -345,
     era: 'ПРОЕКТ 03 // ТЕНДЕРЫ И АНАЛИТИКА',
     title: 'ТЕНДЕРНЫЙ БОТ',
-    subtitle: 'Конкуренты, история участия, планы закупок',
+    subtitle: 'Аналитика госзакупок Беларуси',
     metrics: ['API GIAS.BY|данные о торгах', 'КОНКУРЕНТЫ|анализ участия', 'ПЛАНЫ ЗАКУПОК|анализ и фильтр'],
     accentHex: '#f59e0b',
     secondaryHex: '#38bdf8',
+    diagram: 'tenders',
   });
 }
 

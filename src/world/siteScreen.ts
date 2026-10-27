@@ -17,6 +17,10 @@ const SLIDE_SEC = 3.4;
 const FADE_SEC = 0.7;
 const HOLD_AFTER_MANUAL_SEC = 26; // after a manual pick, stay on that site this long
 const FPS = 24;
+const SCALE = 1.5; // canvas is 1536x864; all drawing code works in the 1024x576 grid
+// The stand is far away, so each screenshot is shown zoomed in (its text becomes
+// readable) and panned down like a scroll; the full design lives in the details panel.
+const BASE_ZOOM = 1.32;
 
 export interface SiteScreen {
   texture: THREE.CanvasTexture;
@@ -28,8 +32,8 @@ export interface SiteScreen {
 
 export function createSiteScreen(anisotropy = 8): SiteScreen {
   const canvas = document.createElement('canvas');
-  canvas.width = W;
-  canvas.height = H;
+  canvas.width = W * SCALE;
+  canvas.height = H * SCALE;
   const ctx = canvas.getContext('2d')!;
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
@@ -64,17 +68,19 @@ export function createSiteScreen(anisotropy = 8): SiteScreen {
   const drawSlide = (si: number, k: number, pan: number, alpha: number, zoom: number) => {
     const img = images[si][k];
     if (!img || !loaded[si][k]) return;
-    // cover-fit by width, pan down through the screenshot
-    const sw = img.naturalWidth;
-    const sh = Math.min(img.naturalHeight, (sw * AREA_H) / W / zoom);
-    const sx = (sw - sw / zoom) / 2;
-    const sy = pan * Math.max(0, img.naturalHeight - sh);
+    // zoomed cover-fit by width, panning down through the screenshot
+    const z = zoom * BASE_ZOOM;
+    const cw = img.naturalWidth / z;
+    const ch = Math.min(img.naturalHeight, (cw * AREA_H) / W);
+    const sx = (img.naturalWidth - cw) / 2;
+    const sy = pan * Math.max(0, img.naturalHeight - ch);
     ctx.globalAlpha = alpha;
-    ctx.drawImage(img, sx, sy, sw / zoom, sh, 0, BAR, W, AREA_H);
+    ctx.drawImage(img, sx, sy, cw, ch, 0, BAR, W, AREA_H);
     ctx.globalAlpha = 1;
   };
 
   const draw = () => {
+    ctx.setTransform(SCALE, 0, 0, SCALE, 0, 0);
     const site = SITES[index];
     const n = site.slides.length;
 

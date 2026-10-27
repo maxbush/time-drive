@@ -44,7 +44,7 @@ export const TRANSITION_TUNING = {
     gateFov: 10,
     gateWarp: 0.5,
     gateShake: 0.14,
-    gateCarFx: 1,
+    gateCarFx: 0.4, // glow around the car inside the gate (was 1.0: far too strong)
   },
 
   launch: {
@@ -173,7 +173,7 @@ export class TransitionDirector {
           shake = Math.max(shake, 0.3 * p * p);
           fov = Math.max(fov, J.preFov * p);
           warp = Math.max(warp, 0.3 * p);
-          carFx = Math.max(carFx, 0.5 * p);
+          carFx = Math.max(carFx, 0.22 * p);
           kind = 'jump';
         }
       } else {

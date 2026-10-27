@@ -207,10 +207,7 @@ export default function App() {
           )}
 
           {showFinale && (
-            <FinalePanel
-              onDiscuss={() => openContact('Обсудить проект')}
-              onRestart={() => engine()?.resumeFromStation()}
-            />
+            <FinalePanel onRestart={() => engine()?.resumeFromStation()} />
           )}
 
           <ChapterBar
