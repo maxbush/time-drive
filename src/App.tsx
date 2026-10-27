@@ -83,6 +83,7 @@ export default function App() {
   const [telemetry, setTelemetry] = useState<WorldTelemetry>({
     fps: 60,
     drawCalls: 0,
+    profile: '',
     triangles: 0,
     speedKmh: 0,
     zPos: 315,
@@ -582,8 +583,8 @@ export default function App() {
                   {debugMode && (
                     <>
                       <span className="text-emerald-400">{telemetry.fps} FPS</span>
-                      <span className="hidden lg:inline text-slate-500">
-                        {telemetry.drawCalls} DC · {(telemetry.triangles / 1e6).toFixed(1)}M△
+                      <span className="text-slate-500 text-[10px]">
+                        {telemetry.drawCalls} DC · {(telemetry.triangles / 1e6).toFixed(1)}M△ · {telemetry.profile}
                       </span>
                     </>
                   )}

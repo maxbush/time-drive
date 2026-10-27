@@ -4,7 +4,8 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { SMAAPass } from 'three/examples/jsm/postprocessing/SMAAPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
-import type { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
+import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
+import { FXAAShader } from 'three/examples/jsm/shaders/FXAAShader.js';
 import { TransitionDirector, createTransitionPass, TRANSITION_TUNING } from './transitions';
 import { createFireTrails, FireTrails } from './fireTrails';
 import { createTextureLibrary } from './textures';
@@ -143,6 +144,7 @@ const STATION_CAM = {
 export interface WorldTelemetry {
   fps: number;
   drawCalls: number;
+  profile: string; // e.g. "mobile · cap30 · dpr1.5" (debug panel)
   triangles: number;
   speedKmh: number;
   zPos: number;
@@ -193,7 +195,17 @@ export class WorldSceneEngine {
 
   private allLightAnchors: LightAnchor[] = [];
   private dynamicLightPool: THREE.PointLight[] = [];
-  private readonly LIGHT_POOL_SIZE = 8;
+  private LIGHT_POOL_SIZE = 8; // 3 on phones (set in the constructor)
+
+  // Phone profile (auto on coarse-pointer touch devices, or ?quality=mobile):
+  // no shadow map / planar reflection, cheap windows, fewer lights & trees, FXAA
+  // instead of SMAA, half-res bloom, DPR floor, and an automatic 30 FPS cap when
+  // the device can't hold ~48.
+  private mobile = false;
+  private bloomScale = 1;
+  private frameCap = 0; // 0 = uncapped, else target FPS
+  private capStreak = 0;
+  private fxaaPass: ShaderPass | null = null;
   private lastLightSortPos = new THREE.Vector3(1e9, 0, 0);
 
   private cameraMode: CameraMode = 'chase';
@@ -264,7 +276,22 @@ export class WorldSceneEngine {
     const height = Math.max(1, container.clientHeight);
     this.viewW = width;
     this.viewH = height;
-    const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+
+    const params = new URLSearchParams(window.location.search);
+    const qParam = params.get('quality');
+    // Primary pointer coarse + no hover = phone/tablet (touch laptops keep the full profile).
+    const coarse = window.matchMedia?.('(pointer: coarse) and (hover: none)').matches ?? false;
+    this.mobile = qParam === 'mobile' || (!qParam && coarse);
+    const fpsParam = params.get('fps');
+    if (fpsParam === '30' || fpsParam === '45' || fpsParam === '60') this.frameCap = fpsParam === '60' ? 0 : Number(fpsParam);
+    if (this.mobile) {
+      this.bloomScale = 0.5;
+      this.LIGHT_POOL_SIZE = 3;
+      this.dprCap = 1.5;
+      this.reflectionDisabled = true;
+      this.qualityTier = 2; // reflection already off; next governor step drops bloom
+    }
+    const pixelRatio = Math.min(window.devicePixelRatio || 1, this.mobile ? 1.5 : 2);
     this.currentDpr = pixelRatio;
 
     this.renderer = new THREE.WebGLRenderer({
@@ -275,7 +302,7 @@ export class WorldSceneEngine {
     this.renderer.info.autoReset = false;
     this.renderer.setSize(width, height);
     this.renderer.setPixelRatio(pixelRatio);
-    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.enabled = !this.mobile;
     this.renderer.shadowMap.autoUpdate = false; // driven manually every 2nd frame
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -288,9 +315,16 @@ export class WorldSceneEngine {
     this.camera.layers.enable(1); // layer 1: visible in main cam, excluded from planar reflection
 
     const texLib = createTextureLibrary(this.renderer);
-    const palette = createMaterialPalette(texLib);
+    const palette = createMaterialPalette(texLib, { mobile: this.mobile });
 
     this.envSystem = createEnvironment(this.renderer, this.scene, palette);
+    if (this.mobile) {
+      // No shadow map on phones: stop the sun from casting before anything compiles
+      this.scene.traverse((o) => {
+        const l = o as THREE.DirectionalLight;
+        if (l.isDirectionalLight) l.castShadow = false;
+      });
+    }
     this.avenue = buildGrandAvenue(palette);
     this.scene.add(this.avenue.group);
 
@@ -299,10 +333,12 @@ export class WorldSceneEngine {
     this.scene.add(this.archGroup);
 
     // Load real 3D elm trees (`tree_elm.glb`) onto sidewalk planter islands, park mounds & Confluence terraces!
-    const treesReady = loadAndPlaceElmTrees(this.scene, [
-      ...this.avenue.treePlacements,
-      ...archResult.treePlacements,
-    ]);
+    const allTrees = [...this.avenue.treePlacements, ...archResult.treePlacements];
+    // Phones: every other tree (each is ~38k triangles)
+    const treesReady = loadAndPlaceElmTrees(
+      this.scene,
+      this.mobile ? allTrees.filter((_, i) => i % 2 === 0) : allTrees
+    );
 
     // Build Act III Space Cosmos & Starfield Warp
     this.spaceCosmos = createSpaceCosmos(this.scene);
@@ -314,7 +350,7 @@ export class WorldSceneEngine {
       this.dynamicLightPool.push(pl);
     }
 
-    this.vehicle = createVehicleController(this.scene, onProgress, this.renderer);
+    this.vehicle = createVehicleController(this.scene, onProgress, this.renderer, { mobile: this.mobile });
     this.fireTrails = createFireTrails(this.scene);
     // Loading screen waits for the car AND the tree GLB; tree shaders get a
     // second compile so they never stutter on first appearance.
@@ -330,8 +366,9 @@ export class WorldSceneEngine {
       }
     });
 
-    const reflW = Math.max(256, Math.floor(width * pixelRatio * 0.5));
-    const reflH = Math.max(256, Math.floor(height * pixelRatio * 0.5));
+    // (phones never render the reflection pass, so keep its target tiny)
+    const reflW = this.mobile ? 64 : Math.max(256, Math.floor(width * pixelRatio * 0.5));
+    const reflH = this.mobile ? 64 : Math.max(256, Math.floor(height * pixelRatio * 0.5));
     this.reflectRT = new THREE.WebGLRenderTarget(reflW, reflH, {
       minFilter: THREE.LinearFilter,
       magFilter: THREE.LinearFilter,
@@ -368,7 +405,15 @@ export class WorldSceneEngine {
     );
     this.composer.addPass(this.bloomPass);
     this.composer.addPass(new OutputPass());
-    this.composer.addPass(new SMAAPass(width, height));
+    if (this.mobile) {
+      // One cheap FXAA pass instead of SMAA's three, and a half-res bloom
+      this.fxaaPass = new ShaderPass(FXAAShader);
+      this.composer.addPass(this.fxaaPass);
+      this.updateFxaa();
+      this.bloomPass.setSize(width * this.bloomScale, height * this.bloomScale);
+    } else {
+      this.composer.addPass(new SMAAPass(width, height));
+    }
 
     // Precompile all shaders behind the loading screen — kills first-frame
     // compile hitches when the world first becomes visible.
@@ -380,7 +425,8 @@ export class WorldSceneEngine {
     this.updateDynamicLights();
 
     // Optional forced quality: ?quality=low|med|high
-    const q = new URLSearchParams(window.location.search).get('quality');
+    // (mobile is decided at the top of the constructor; touch laptops keep full quality)
+    const q = qParam;
     if (q === 'low') {
       this.dprCap = 1.25;
       this.currentDpr = Math.min(this.currentDpr, 1.25);
@@ -389,7 +435,7 @@ export class WorldSceneEngine {
       this.reflectionDisabled = true;
       this.bloomPass.enabled = false;
       this.qualityTier = 3;
-    } else if (q === 'med' || (!q && navigator.maxTouchPoints > 0)) {
+    } else if (q === 'med') {
       this.dprCap = 1.5;
       this.currentDpr = Math.min(this.currentDpr, 1.5);
       this.renderer.setPixelRatio(this.currentDpr);
@@ -703,6 +749,9 @@ export class WorldSceneEngine {
     this.animFrameId = requestAnimationFrame(() => this.animate(palette));
 
     const now = performance.now();
+    // Frame cap (phones that can't hold ~48 fps lock to an even 30 instead of
+    // stuttering between 20 and 40). rAF keeps running, we just skip the frame.
+    if (this.frameCap > 0 && now - this.lastPerfTime < 1000 / this.frameCap - 2) return;
     const dt = Math.min((now - this.lastPerfTime) * 0.001, 0.05);
     this.lastPerfTime = now;
     this.elapsedTime += dt;
@@ -863,18 +912,30 @@ export class WorldSceneEngine {
     if (this.dprTimer >= 2 && this.frameCounter > 30 && !(zPos < -380 || yPos > 5)) {
       this.dprTimer = 0;
       const maxDpr = Math.min(window.devicePixelRatio || 1, this.dprCap);
-      const DPR_STEPS = [1.0, 1.25, 1.5, 2.0];
+      // Phones never go below 1.25 (below that the image turns to mush).
+      const floor = this.mobile ? 1.25 : 1.0;
+      const DPR_STEPS = [1.0, 1.25, 1.5, 2.0].filter((s) => s >= floor);
+      const target = this.frameCap || 60; // fps we are trying to hold
       let next = this.currentDpr;
       const cur = DPR_STEPS.reduce((a, b) => (Math.abs(b - next) < Math.abs(a - next) ? b : a));
-      if (this.currentFps < 50 && cur > 1.0) {
-        next = Math.max(1.0, DPR_STEPS[DPR_STEPS.indexOf(cur) - 1]);
-      } else if (this.currentFps > 57 && cur < maxDpr) {
+      if (this.currentFps < target * 0.83 && cur > floor) {
+        next = DPR_STEPS[Math.max(0, DPR_STEPS.indexOf(cur) - 1)];
+      } else if (this.currentFps > target * 0.95 && cur < maxDpr) {
         next = Math.min(maxDpr, DPR_STEPS[Math.min(DPR_STEPS.length - 1, DPR_STEPS.indexOf(cur) + 1)]);
       }
       this.setDpr(next);
 
+      // Phones that can't hold ~48 fps settle on a steady 30 instead of 20-40 stutter.
+      if (this.mobile && !this.frameCap) {
+        this.capStreak = this.currentFps < 46 ? this.capStreak + 1 : 0;
+        if (this.capStreak >= 2) {
+          this.frameCap = 30;
+          this.lowStreak = 0;
+        }
+      }
+
       // Quality governor: ~4s of sustained low FPS steps the scene down a tier
-      this.lowStreak = this.currentFps < 42 ? this.lowStreak + 1 : 0;
+      this.lowStreak = this.currentFps < target * 0.7 ? this.lowStreak + 1 : 0;
       if (this.lowStreak >= 2 && this.qualityTier < 3) {
         this.lowStreak = 0;
         this.applyQualityTier(++this.qualityTier);
@@ -907,6 +968,7 @@ export class WorldSceneEngine {
     this.onTelemetry({
       fps: this.currentFps,
       drawCalls: this.renderer.info.render.calls,
+      profile: `${this.mobile ? 'mobile' : 'full'} · ${this.frameCap ? 'cap' + this.frameCap : 'uncapped'} · dpr${this.currentDpr.toFixed(2)}`,
       triangles: this.renderer.info.render.triangles,
       speedKmh: Math.round(Math.abs(this.vehicle.speed) * 3.2),
       zPos: Math.round(zPos),
@@ -975,11 +1037,20 @@ export class WorldSceneEngine {
     this.composer.setPixelRatio(next);
     this.renderer.setSize(this.viewW, this.viewH);
     this.composer.setSize(this.viewW, this.viewH);
-    this.bloomPass.setSize(this.viewW, this.viewH);
+    this.bloomPass.setSize(this.viewW * this.bloomScale, this.viewH * this.bloomScale);
     this.reflectRT.setSize(
-      Math.max(256, Math.floor(this.viewW * next * 0.5)),
-      Math.max(256, Math.floor(this.viewH * next * 0.5))
+      this.mobile ? 64 : Math.max(256, Math.floor(this.viewW * next * 0.5)),
+      this.mobile ? 64 : Math.max(256, Math.floor(this.viewH * next * 0.5))
     );
+    this.updateFxaa();
+  }
+
+  // FXAA needs the texel size of the (DPR-scaled) drawing buffer
+  private updateFxaa() {
+    if (!this.fxaaPass) return;
+    const w = this.renderer.domElement.width || this.viewW;
+    const h = this.renderer.domElement.height || this.viewH;
+    this.fxaaPass.material.uniforms['resolution'].value.set(1 / w, 1 / h);
   }
 
   // One real composer frame with EVERYTHING forced visible: compiles the
@@ -1032,11 +1103,12 @@ export class WorldSceneEngine {
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(width, height);
     this.composer.setSize(width, height);
-    this.bloomPass.setSize(width, height);
+    this.bloomPass.setSize(width * this.bloomScale, height * this.bloomScale);
     this.reflectRT.setSize(
-      Math.max(256, Math.floor(width * pixelRatio * 0.5)),
-      Math.max(256, Math.floor(height * pixelRatio * 0.5))
+      this.mobile ? 64 : Math.max(256, Math.floor(width * pixelRatio * 0.5)),
+      this.mobile ? 64 : Math.max(256, Math.floor(height * pixelRatio * 0.5))
     );
+    this.updateFxaa();
   };
 
   private handleKeyDown = (e: KeyboardEvent) => {

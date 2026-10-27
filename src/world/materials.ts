@@ -50,7 +50,10 @@ export interface MaterialPalette {
   setEnvCubemap: (cubeTex: THREE.CubeTexture) => void;
 }
 
-export function createMaterialPalette(texLib: TextureLibrary): MaterialPalette {
+export function createMaterialPalette(
+  texLib: TextureLibrary,
+  opts: { mobile?: boolean } = {}
+): MaterialPalette {
   const reflectionUniforms = {
     uReflectionMap: { value: null as THREE.Texture | null },
     uReflectMatrix: { value: new THREE.Matrix4() },
@@ -460,6 +463,9 @@ export function createMaterialPalette(texLib: TextureLibrary): MaterialPalette {
       },
     ]),
     fog: true,
+    // Phones: skip the interior-mapping ray cast (windows are a few pixels there
+    // anyway) and shade each pane with a cheap lit/unlit gradient instead.
+    defines: opts.mobile ? { MOBILE_WINDOWS: '' } : {},
     vertexShader: `
       #include <common>
       #include <fog_pars_vertex>
@@ -512,6 +518,29 @@ export function createMaterialPalette(texLib: TextureLibrary): MaterialPalette {
       }
 
       void main() {
+#ifdef MOBILE_WINDOWS
+        {
+          float lit = vRoomMeta.y;
+          float warmth = vRoomMeta.z;
+          vec3 warmC = mix(vec3(1.0, 0.72, 0.42), vec3(0.95, 0.89, 0.78), warmth);
+          vec3 unlit = vec3(0.045, 0.075, 0.125);
+          float wash = 0.62 + 0.38 * smoothstep(0.0, 1.0, vUv.y); // ceiling-wash feel
+          vec3 roomC = mix(unlit, warmC * (0.40 + 0.28 * hash11(vRoomMeta.x + 4.1)) * wash, clamp(lit, 0.0, 1.2));
+          if (vBlindDrop > 0.02 && vUv.y > (1.0 - vBlindDrop)) roomC *= 0.35;
+          float edge = smoothstep(0.0, 0.06, vUv.x) * smoothstep(1.0, 0.94, vUv.x)
+                     * smoothstep(0.0, 0.06, vUv.y) * smoothstep(1.0, 0.94, vUv.y);
+          roomC *= 0.7 + 0.3 * edge;
+          vec3 Vm = normalize(vWorldPos - cameraPosition);
+          float ndv = clamp(dot(-Vm, normalize(vWorldNormal)), 0.0, 1.0);
+          float fres = 0.08 + 0.6 * pow(1.0 - ndv, 4.0);
+          vec3 col = mix(roomC, vec3(0.115, 0.195, 0.345), clamp(fres * mix(0.95, 0.4, clamp(lit, 0.0, 1.0)), 0.06, 0.7));
+          gl_FragColor = vec4(col, 1.0);
+          #include <tonemapping_fragment>
+          #include <colorspace_fragment>
+          #include <fog_fragment>
+          return;
+        }
+#endif
         vec3 N = normalize(vWorldNormal);
         vec3 T = normalize(vWorldTangent);
         vec3 B = normalize(cross(N, T));

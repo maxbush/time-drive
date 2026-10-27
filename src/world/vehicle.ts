@@ -186,7 +186,8 @@ const CAR_ENV_INTENSITY = 0.78;
 export function createVehicleController(
   scene: THREE.Scene,
   onProgress?: (fraction: number) => void,
-  renderer?: THREE.WebGLRenderer
+  renderer?: THREE.WebGLRenderer,
+  opts: { mobile?: boolean } = {}
 ): VehicleController {
   // One-off PMREM of a soft-box studio, used ONLY by the car's materials (the
   // city keeps its dusk look). No per-frame cost, no extra lights.
@@ -244,8 +245,11 @@ export function createVehicleController(
     const spot = new THREE.SpotLight('#ffe2b0', 34, 68, 0.24, 0.6, 1.55);
     spot.position.set(x, 1.05, -3.55);
     spot.target.position.set(x * 1.8, -0.5, -27);
-    root.add(spot);
-    root.add(spot.target);
+    if (!opts.mobile) {
+      // Phones: no real headlight spots (two more lights in every fragment's loop)
+      root.add(spot);
+      root.add(spot.target);
+    }
     return spot;
   };
   const headL = mkHeadlight(-0.85);
@@ -693,7 +697,9 @@ export function createVehicleController(
   //     a hair inside the body -> no self-shadow acne on the detailed car.
   //  b) reflection proxy — a REAL cheap material on layer 2, seen only by the
   //     planar reflection camera (detailed car moved to layer 1).
-  loader.load('./models/bttf_delorean_shadow.glb', (gltf) => {
+  // (Phones have shadows and the planar reflection switched off, so skip these
+  // two proxies entirely — saves a 1.6 MB download and two meshes.)
+  if (!opts.mobile) loader.load('./models/bttf_delorean_shadow.glb', (gltf) => {
     const mkNormalized = () => {
       const model = gltf.scene.clone(true);
       const bounds = new THREE.Box3().setFromObject(model);
