@@ -771,14 +771,14 @@ function buildAct1SignsAndGantries(b: ArchitectureBuilder) {
     b.addBox('darkBronze', 0, 12.4, g.z - 0.75, 30.8, 2.5, 0.2);
     b.addBox('hdrWarmGlow', 0, 10.72, g.z, 26.5, 0.1, 0.3);
 
-    b.addSignBoard(-6.4, 12.4, g.z + 0.96, 0, 11.8, 2.55, g.leftTitle, g.leftSub, {
+    b.addSignBoard(-7.2, 12.4, g.z + 0.96, 0, 14.6, 3.4, g.leftTitle, g.leftSub, {
       bg: '#0c1220',
       fg: '#f8fafc',
       accent: g.accent,
       border: true,
       tag: 'ERA 01 // LEGACY WEB 2.0',
     });
-    b.addSignBoard(6.4, 12.4, g.z + 0.96, 0, 11.8, 2.55, g.rightTitle, g.rightSub, {
+    b.addSignBoard(7.2, 12.4, g.z + 0.96, 0, 14.6, 3.4, g.rightTitle, g.rightSub, {
       bg: '#0c1220',
       fg: '#f8fafc',
       accent: g.accent,

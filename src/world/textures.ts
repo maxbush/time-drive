@@ -747,28 +747,35 @@ export function createPastRoadSignTexture(crossedOut: boolean, anisotropy = 8): 
     ctx.font = '500 24px "Inter", sans-serif';
     ctx.fillText('ACCELERATE TO 88 MPH FOR TEMPORAL JUMP ↑', w / 2, 418);
   } else {
+    // European "end of zone" sign: thick red band across the word + a thin
+    // parallel echo — reads as "past cancelled" even at 40 m/s glance.
     ctx.fillStyle = '#94a3b8';
-    ctx.font = '700 28px "Inter", monospace';
-    ctx.fillText('LEAVING LEGACY STACK ZONE', w / 2, 92);
+    ctx.font = '700 26px "Inter", monospace';
+    ctx.fillText('YOU ARE NOW LEAVING', w / 2, 88);
 
     ctx.fillStyle = '#e2e8f0';
-    ctx.font = '900 108px "Inter", sans-serif';
-    ctx.fillText('THE PAST', w / 2, 225);
+    ctx.font = '900 118px "Inter", sans-serif';
+    ctx.fillText('THE PAST', w / 2, 228);
 
-    // Bold red diagonal strike-through lines across "THE PAST"
     ctx.save();
     ctx.strokeStyle = '#ef4444';
-    ctx.lineWidth = 26;
     ctx.lineCap = 'round';
+    ctx.lineWidth = 34;
     ctx.beginPath();
-    ctx.moveTo(190, 315);
-    ctx.lineTo(834, 135);
+    ctx.moveTo(172, 318);
+    ctx.lineTo(852, 132);
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(239,68,68,0.5)';
+    ctx.lineWidth = 10;
+    ctx.beginPath();
+    ctx.moveTo(172, 348);
+    ctx.lineTo(852, 162);
     ctx.stroke();
     ctx.restore();
 
     ctx.fillStyle = '#38bdf8';
-    ctx.font = '800 36px "Inter", monospace';
-    ctx.fillText('NEXT: MODERN ARCHITECTURE & AI ERA →', w / 2, 395);
+    ctx.font = '800 34px "Inter", monospace';
+    ctx.fillText('NEXT EXIT → THE PRESENT', w / 2, 400);
   }
 
   const tex = new THREE.CanvasTexture(c);
