@@ -5,6 +5,19 @@
   user-select: none;
 }
 
+/* "Rotate your phone" hint: the phone icon tips onto its side and back */
+@keyframes rotate-hint {
+  0%, 18% { transform: rotate(0deg); }
+  50%, 78% { transform: rotate(-90deg); }
+  100% { transform: rotate(0deg); }
+}
+.rotate-hint {
+  animation: rotate-hint 2.8s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .rotate-hint { animation: none; transform: rotate(-90deg); }
+}
+
 html, body, #root {
   width: 100%;
   height: 100%;

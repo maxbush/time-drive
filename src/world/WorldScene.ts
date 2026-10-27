@@ -205,6 +205,7 @@ export class WorldSceneEngine {
   private bloomScale = 1;
   private frameCap = 0; // 0 = uncapped, else target FPS
   private capStreak = 0;
+  private paused = false;
   private fxaaPass: ShaderPass | null = null;
   private lastLightSortPos = new THREE.Vector3(1e9, 0, 0);
 
@@ -455,6 +456,13 @@ export class WorldSceneEngine {
 
     this.lastPerfTime = performance.now();
     this.animate(palette);
+  }
+
+  /** Pause/resume the whole simulation + rendering (e.g. while asking to rotate a phone).
+   *  Asset loading and shader warm-up are unaffected. */
+  public setPaused(p: boolean) {
+    this.paused = p;
+    if (!p) this.lastPerfTime = performance.now();
   }
 
   public resumeFromStation() {
@@ -749,6 +757,10 @@ export class WorldSceneEngine {
     this.animFrameId = requestAnimationFrame(() => this.animate(palette));
 
     const now = performance.now();
+    if (this.paused) {
+      this.lastPerfTime = now; // no giant dt when we resume
+      return;
+    }
     // Frame cap (phones that can't hold ~48 fps lock to an even 30 instead of
     // stuttering between 20 and 40). rAF keeps running, we just skip the frame.
     if (this.frameCap > 0 && now - this.lastPerfTime < 1000 / this.frameCap - 2) return;
