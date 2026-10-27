@@ -68,7 +68,12 @@ const PROJECT_BRIEFS: Record<'web' | 'albion' | 'tenders', ProjectBriefData> = {
 export default function App() {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const engineRef = useRef<WorldSceneEngine | null>(null);
-  const [hudVisible, setHudVisible] = useState(true);
+  // ?debug: start with the whole interface hidden (just a tiny FPS readout) so the
+  // scene can be judged unobstructed — tap "SHOW HUD" / press H to bring it back.
+  const debugMode =
+    typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).has('debug');
+  const [hudVisible, setHudVisible] = useState(!debugMode);
   const [loading, setLoading] = useState(true);
   const [loadPct, setLoadPct] = useState(0);
   const flashRef = useRef<HTMLDivElement>(null);
@@ -101,10 +106,6 @@ export default function App() {
     flashKind: null,
     spaceFactor: 0,
   });
-
-  const debugMode =
-    typeof window !== 'undefined' &&
-    new URLSearchParams(window.location.search).has('debug');
 
   // Phones: the journey is built for landscape (portrait is slower and crops the
   // avenue), so in portrait we ask the visitor to rotate. The 3D world is paused
@@ -276,6 +277,17 @@ export default function App() {
           </div>
         </div>
       </div>
+
+      {/* ?debug with the HUD hidden: a tiny always-on performance readout */}
+      {debugMode && !hudVisible && (
+        <div className="pointer-events-none fixed left-2 top-2 z-30 rounded bg-black/45 px-2 py-1 font-mono text-[11px] leading-tight text-emerald-400">
+          {telemetry.fps} FPS
+          <span className="ml-2 text-slate-400">
+            {telemetry.drawCalls} DC · {(telemetry.triangles / 1e6).toFixed(1)}M△
+          </span>
+          <div className="text-[10px] text-slate-500">{telemetry.profile}</div>
+        </div>
+      )}
 
       {/* Minimal Toggle Pill when HUD is hidden */}
       {!hudVisible && (
