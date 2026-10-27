@@ -1011,6 +1011,12 @@ export class WorldSceneEngine {
     this.renderer.toneMappingExposure +=
       (expTarget - this.renderer.toneMappingExposure) * Math.min(1, dt * 2);
 
+    // Situational haze: thicken fog approaching the road's end / gate so the
+    // world edge dissolves into atmosphere instead of a black cut-off.
+    const fogTarget = zPos < -350 ? 0.003 : 0.0016;
+    const fog = this.scene.fog as THREE.FogExp2 | null;
+    if (fog) fog.density += (fogTarget - fog.density) * Math.min(1, dt * 1.5);
+
     // Zonal economy: the dense Act I street is the heaviest stretch — on weak
     // hardware (governor already at tier 1+) micro-props vanish and the two
     // heavy passes thin out to every 3rd frame. Other zones keep full quality.
