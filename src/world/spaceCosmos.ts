@@ -64,8 +64,22 @@ export function createSpaceCosmos(scene: THREE.Scene): SpaceCosmosSystem {
   const starGeo = new THREE.BufferGeometry();
   starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
   starGeo.setAttribute('color', new THREE.BufferAttribute(starCols, 3));
+  // Round soft stars: a plain PointsMaterial point is a hard square.
+  const starCanvas = document.createElement('canvas');
+  starCanvas.width = starCanvas.height = 64;
+  const sg = starCanvas.getContext('2d')!;
+  const sGrad = sg.createRadialGradient(32, 32, 0, 32, 32, 32);
+  sGrad.addColorStop(0, 'rgba(255,255,255,1)');
+  sGrad.addColorStop(0.22, 'rgba(255,255,255,0.9)');
+  sGrad.addColorStop(0.55, 'rgba(255,255,255,0.2)');
+  sGrad.addColorStop(1, 'rgba(255,255,255,0)');
+  sg.fillStyle = sGrad;
+  sg.fillRect(0, 0, 64, 64);
+  const starTex = new THREE.CanvasTexture(starCanvas);
+  starTex.colorSpace = THREE.SRGBColorSpace;
   const starMat = new THREE.PointsMaterial({
-    size: 1.9,
+    size: 2.7,
+    map: starTex,
     vertexColors: true,
     transparent: true,
     opacity: 0,

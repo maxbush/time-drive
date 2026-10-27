@@ -10,6 +10,7 @@ import { ContactPanel } from './ui/ContactPanel';
 import { FinalePanel } from './ui/FinalePanel';
 import { RotateHint } from './ui/RotateHint';
 import { DevPanel } from './ui/DevPanel';
+import { STAND_BY_PROJECT } from './world/standSpecs';
 
 const query = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : new URLSearchParams();
 
@@ -24,10 +25,13 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [loadPct, setLoadPct] = useState(0);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [hudAwake, setHudAwake] = useState(false); // pointer / touch / key recently: HUD back to full
+  const [hudIntro, setHudIntro] = useState(true); // full HUD for the first seconds after loading
   const [liveView, setLiveView] = useState(false); // a live site is open in the panel: freeze the 3D world
   const [contact, setContact] = useState<{ open: boolean; subject: string }>({ open: false, subject: '' });
   const flashRef = useRef<HTMLDivElement>(null);
   const flashLabelRef = useRef<HTMLDivElement>(null);
+  const vignetteRef = useRef<HTMLDivElement>(null);
 
   const [telemetry, setTelemetry] = useState<WorldTelemetry>({
     fps: 60,
@@ -97,6 +101,11 @@ export default function App() {
     const el = containerRef.current;
     if (!el) return;
 
+    let cancelled = false;
+    let t1 = 0;
+    let t2 = 0;
+    const boot = () => {
+    if (cancelled) return;
     const engine = new WorldSceneEngine(
       el,
       (data) => setTelemetry(data),
@@ -108,11 +117,14 @@ export default function App() {
     let lastFlashKind: 'jump' | 'launch' | null = null;
     engine.onFlash = (v, kind) => {
       if (flashRef.current) flashRef.current.style.opacity = String(v);
+      // the corner vignette must not grey the white-out of a time jump / launch
+      if (vignetteRef.current) vignetteRef.current.style.opacity = String(1 - Math.min(1, v * 1.3));
       if (flashLabelRef.current && kind !== lastFlashKind) {
         lastFlashKind = kind;
         flashLabelRef.current.textContent = kind === 'launch' ? 'ЗАЖИГАНИЕ' : '88 MPH';
       }
     };
+    }; // boot
 
     const onKey = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement)?.tagName;
@@ -120,13 +132,56 @@ export default function App() {
       if (e.code === 'KeyH' && !e.repeat) setHudVisible((v) => !v);
     };
     window.addEventListener('keydown', onKey);
+    // Build the world only after the loading screen has painted (building blocks the thread)
+    // (and after the fonts the stand boards are drawn with, so they never fall back to a default font)
+    t1 = requestAnimationFrame(() => {
+      const fonts = document.fonts
+        ? Promise.race([
+            Promise.all([
+              document.fonts.load('200 20px "Inter Variable"'),
+              document.fonts.load('300 14px "Inter Variable"'),
+              document.fonts.load('400 16px "JetBrains Mono"'),
+            ]),
+            new Promise((r) => setTimeout(r, 1500)),
+          ])
+        : Promise.resolve();
+      fonts.then(() => {
+        t2 = window.setTimeout(boot, 40);
+      });
+    });
 
     return () => {
+      cancelled = true;
+      cancelAnimationFrame(t1);
+      clearTimeout(t2);
       window.removeEventListener('keydown', onKey);
-      engine.dispose();
+      engineRef.current?.dispose();
       engineRef.current = null;
     };
   }, []);
+
+  // Cinematic HUD: dimmed while driving, but a pointer move / touch / key brings it back for a
+  // moment (so the chapters and "drive on" are always reachable), and it is full for the first
+  // seconds after the loading screen so a new visitor sees the navigation.
+  useEffect(() => {
+    let timer = 0;
+    const wake = () => {
+      setHudAwake(true);
+      clearTimeout(timer);
+      timer = window.setTimeout(() => setHudAwake(false), 2600);
+    };
+    const events = ['pointermove', 'pointerdown', 'touchstart', 'keydown'] as const;
+    events.forEach((e) => window.addEventListener(e, wake, { passive: true }));
+    return () => {
+      events.forEach((e) => window.removeEventListener(e, wake));
+      clearTimeout(timer);
+    };
+  }, []);
+  useEffect(() => {
+    if (loading) return;
+    const t = window.setTimeout(() => setHudIntro(false), 6000);
+    return () => clearTimeout(t);
+  }, [loading]);
 
   const station = telemetry.activeStation;
   const activeProject = station && station !== 'space' ? PROJECTS[station as ProjectId] : null;
@@ -135,17 +190,18 @@ export default function App() {
   // The side panel belongs to a stop: the website stop opens it on arrival (previews of
   // the sites), the others open it from "Подробнее". Driving away closes it.
   useEffect(() => {
-    setDrawerOpen(station === 'web');
+    setDrawerOpen(station === 'web' || station === 'albion' || station === 'tenders');
   }, [station]);
 
   // The wide sites panel covers the right half: slide the 3D view into the free left part
   // so the stand and the car stay visible (the narrow drawers sit over empty road).
-  const sitesPanelOpen = drawerOpen && !!activeProject?.sites && hudVisible;
+  const panelOpen = drawerOpen && !!activeProject && hudVisible;
+  const panelDir = activeProject?.side === 'left' ? -1 : 1; // the panel sits opposite the stand
   useEffect(() => {
     const vw = window.innerWidth;
     const panel = Math.min(680, vw * (window.innerHeight <= 480 ? 0.52 : 0.5));
-    engineRef.current?.setPanelShift(sitesPanelOpen ? (panel / vw / 2) * 0.82 : 0);
-  }, [sitesPanelOpen]);
+    engineRef.current?.setPanelShift(panelOpen ? panelDir * (panel / vw / 2) * 0.82 : 0);
+  }, [panelOpen, panelDir]);
 
   const progressPct = Math.max(
     0,
@@ -157,7 +213,7 @@ export default function App() {
   const chIdx = Math.max(0, CHAPTERS.findIndex((c) => c.id === telemetry.activeZoneId));
   const chapter = `Глава ${String(chIdx + 1).padStart(2, '0')} · ${CHAPTERS[chIdx].label}`;
   // Cinematic HUD: chrome dims to a whisper while the car is moving, full at stops.
-  const driving = telemetry.speedKmh > 8 && station === null && !drawerOpen && !showFinale;
+  const driving = telemetry.speedKmh > 8 && station === null && !drawerOpen && !showFinale && !hudAwake && !hudIntro;
   const chromeFade = `transition-opacity duration-700 ${driving ? 'opacity-25' : 'opacity-100'}`;
 
   return (
@@ -167,6 +223,7 @@ export default function App() {
 
       {/* Cinematic vignette — pure CSS, zero GL cost */}
       <div
+        ref={vignetteRef}
         className="pointer-events-none fixed inset-0 z-[6]"
         style={{
           background:
@@ -231,6 +288,7 @@ export default function App() {
               project={activeProject}
               onClose={() => setDrawerOpen(false)}
               onLive={setLiveView}
+              schema={station ? STAND_BY_PROJECT[station] : undefined}
               onCta={() => openContact(activeProject.demoSubject)}
             />
           )}

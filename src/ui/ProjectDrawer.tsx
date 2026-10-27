@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { ProjectContent, SiteContent, UI } from '../content';
+import { renderStandImage, StandOptions } from '../world/standTexture';
 
 const label = 'font-mono text-[10px] uppercase tracking-[0.24em] text-slate-500';
 const link =
@@ -15,7 +16,9 @@ export function ProjectDrawer({
   onClose,
   onCta,
   onLive,
+  schema,
 }: {
+  schema?: StandOptions;
   project: ProjectContent;
   onClose: () => void;
   onCta: () => void;
@@ -24,6 +27,30 @@ export function ProjectDrawer({
   const scroller = useRef<HTMLElement | null>(null);
   const [siteIdx, setSiteIdx] = useState<number | null>(null);
   const [frameLoaded, setFrameLoaded] = useState(false);
+  // the board of the stop, redrawn large for reading (software stops only)
+  const [schemaUrl, setSchemaUrl] = useState<string | null>(null);
+  const [zoom, setZoom] = useState(false);
+  useEffect(() => {
+    if (!schema) return;
+    let dead = false;
+    const fonts = document.fonts
+      ? Promise.race([
+          Promise.all([
+            document.fonts.load('200 20px "Inter Variable"'),
+            document.fonts.load('300 14px "Inter Variable"'),
+            document.fonts.load('400 16px "JetBrains Mono"'),
+            document.fonts.load('500 16px "JetBrains Mono"'),
+          ]),
+          new Promise((r) => setTimeout(r, 1500)),
+        ])
+      : Promise.resolve();
+    fonts.then(() => {
+      if (!dead) setSchemaUrl(renderStandImage(schema, 2.4));
+    });
+    return () => {
+      dead = true;
+    };
+  }, [schema]);
   const sites = project.sites;
   const site: SiteContent | null = sites && siteIdx !== null ? sites[siteIdx] : null;
 
@@ -35,12 +62,13 @@ export function ProjectDrawer({
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.code !== 'Escape') return;
-      if (site) setSiteIdx(null);
+      if (zoom) setZoom(false);
+      else if (site) setSiteIdx(null);
       else onClose();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose, site]);
+  }, [onClose, site, zoom]);
 
   // A live site shares the page's main thread: freeze the 3D world while it is shown.
   useEffect(() => {
@@ -54,10 +82,12 @@ export function ProjectDrawer({
   }, [siteIdx]);
 
   // Site detail = near-fullscreen live window; everything else = right drawer.
+  // (the panel sits opposite the stand of the stop: the tender stand is on the right, so its panel is left)
+  const left = project.side === 'left' && !site;
   const panelCls = site
     ? 'fixed inset-2 sm:inset-4 z-30 rounded-xl border border-white/15 flex flex-col bg-[#060a12]/97'
-    : `fixed bottom-0 right-0 top-0 z-30 flex flex-col overflow-y-auto border-l border-white/10 bg-[#060a12]/95 px-6 pb-6 pt-5 sm:px-8 ${
-        sites ? 'w-[min(680px,50vw)] short:w-[52vw]' : 'w-[min(460px,94vw)]'
+    : `fixed bottom-0 top-0 z-30 flex w-[min(680px,50vw)] flex-col overflow-y-auto border-white/10 bg-[#060a12]/95 px-6 pb-6 pt-5 short:w-[52vw] sm:px-8 ${
+        left ? 'left-0 border-r' : 'right-0 border-l'
       }`;
 
   return (
@@ -65,10 +95,10 @@ export function ProjectDrawer({
       {/* soft dim over the scene next to the panel (no blur: it is expensive on phones) */}
       <div
         className={`pointer-events-none fixed inset-0 z-20 ${
-          site ? 'bg-black/60' : 'bg-gradient-to-r from-black/0 via-black/20 to-black/55'
+          site ? 'bg-black/60' : left ? 'bg-gradient-to-l from-black/0 via-black/20 to-black/55' : 'bg-gradient-to-r from-black/0 via-black/20 to-black/55'
         }`}
       />
-      <aside ref={scroller} className={`drawer-in pointer-events-auto ${panelCls}`}>
+      <aside ref={scroller} className={`${left ? 'drawer-in-left' : 'drawer-in'} pointer-events-auto ${panelCls}`}>
         <div
           className={`flex shrink-0 items-center justify-between border-b border-white/10 ${
             site ? 'px-5 py-3' : 'pb-3'
@@ -194,6 +224,22 @@ export function ProjectDrawer({
             <p className="mt-3 text-sm font-light leading-relaxed text-slate-300 short:mt-1.5">{project.lead}</p>
             {project.note && <p className="mt-1.5 text-xs italic text-slate-500">{project.note}</p>}
 
+            {schema && (
+              <figure className="schema-pop mt-5">
+                {schemaUrl ? (
+                  <button
+                    onClick={() => setZoom(true)}
+                    className="block w-full cursor-zoom-in overflow-hidden rounded-lg border border-white/10 transition hover:border-amber-300/50"
+                  >
+                    <img src={schemaUrl} alt={project.title} className="block w-full" />
+                  </button>
+                ) : (
+                  <div className="aspect-[16/9] w-full rounded-lg border border-white/10 bg-white/[0.02]" />
+                )}
+                <figcaption className={`${label} mt-2 text-center`}>Схема системы · нажмите, чтобы увеличить</figcaption>
+              </figure>
+            )}
+
             <dl className="mt-7 grid grid-cols-3 gap-4 border-y border-white/10 py-4">
               {project.facts.map(([k, v]) => (
                 <div key={k}>
@@ -241,6 +287,15 @@ export function ProjectDrawer({
               </p>
             </section>
           </>
+        )}
+
+        {zoom && schemaUrl && (
+          <div
+            className="fixed inset-0 z-[45] flex cursor-zoom-out items-center justify-center bg-black/85 p-3"
+            onClick={() => setZoom(false)}
+          >
+            <img src={schemaUrl} alt={project.title} className="schema-pop max-h-[94vh] max-w-[96vw] rounded-lg" />
+          </div>
         )}
 
         {!site && (

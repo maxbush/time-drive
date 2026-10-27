@@ -185,12 +185,21 @@ function drawMetrics(ctx: Ctx, metrics: string[], accent: string) {
   });
 }
 
-export function createStandTexture(opts: StandOptions, anisotropy = 8): THREE.CanvasTexture {
+// The finished board as an image (for the HTML panel): drawn on demand at a higher scale.
+export function renderStandImage(opts: StandOptions, scale = 2.4): string {
+  const tex = createStandTexture(opts, 1, scale);
+  const canvas = tex.image as HTMLCanvasElement;
+  const url = canvas.toDataURL('image/webp', 0.92);
+  tex.dispose();
+  return url;
+}
+
+export function createStandTexture(opts: StandOptions, anisotropy = 8, scale = SCALE): THREE.CanvasTexture {
   const canvas = document.createElement('canvas');
-  canvas.width = DW * SCALE;
-  canvas.height = DH * SCALE;
+  canvas.width = DW * scale;
+  canvas.height = DH * scale;
   const ctx = canvas.getContext('2d')!;
-  ctx.scale(SCALE, SCALE);
+  ctx.scale(scale, scale);
 
   // graphite background with a barely-there grid
   const bg = ctx.createLinearGradient(0, 0, 0, DH);

@@ -19,7 +19,8 @@ export interface TreePlacement {
 export function loadAndPlaceElmTrees(
   scene: THREE.Scene,
   placements: TreePlacement[],
-  onProgress?: (fraction: number) => void
+  onProgress?: (fraction: number) => void,
+  opts: { leafShadows?: boolean } = {}
 ): Promise<void> {
   if (placements.length === 0) return Promise.resolve();
 
@@ -157,7 +158,7 @@ export function loadAndPlaceElmTrees(
           }
           for (const chunk of placementChunks) {
             const leafInst = new THREE.InstancedMesh(mergedLeaf, finalLeafMat, chunk.length);
-            leafInst.castShadow = true;
+            leafInst.castShadow = opts.leafShadows !== false;
             leafInst.receiveShadow = true;
             leafInst.layers.set(1); // skip the planar reflection pass
             chunk.forEach((p, idx) => {

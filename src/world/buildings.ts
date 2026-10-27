@@ -4,6 +4,7 @@ import { MaterialPalette } from './materials';
 import { mulberry32 } from './textures';
 import { TreePlacement } from './trees';
 import type { StandDiagram } from './standTexture';
+import { ALBION_STAND, TENDERS_STAND } from './standSpecs';
 
 interface FacadeAxis {
   nx: number;
@@ -1044,13 +1045,7 @@ function buildCluster2AlbionAndSpindle(b: ArchitectureBuilder, treePlacements: T
   buildDesignerProjectTotem(b, {
     side: 'WEST',
     z: -222,
-    era: 'ПРОЕКТ 02 // АВТОМАТИЗАЦИЯ',
-    title: 'ALBION BOT',
-    subtitle: 'Ассистент координатора: WhatsApp · Telegram · MeritHub',
-    metrics: ['MERITHUB|интеграция по API', 'WHATSAPP · TELEGRAM|уведомления', 'AI|заявки и сценарии'],
-    accentHex: '#38bdf8',
-    secondaryHex: '#f59e0b',
-    diagram: 'albion',
+    ...ALBION_STAND,
   });
 }
 
@@ -1182,13 +1177,7 @@ function buildCluster3TendersAndContinuum(b: ArchitectureBuilder, treePlacements
   buildDesignerProjectTotem(b, {
     side: 'EAST',
     z: -345,
-    era: 'ПРОЕКТ 03 // ТЕНДЕРЫ И АНАЛИТИКА',
-    title: 'ТЕНДЕРНАЯ АНАЛИТИКА',
-    subtitle: 'Платформа анализа госзакупок Беларуси',
-    metrics: ['API GIAS.BY|данные о торгах', 'КОНКУРЕНТЫ|анализ участия', 'ПЛАНЫ ЗАКУПОК|анализ и фильтр'],
-    accentHex: '#f59e0b',
-    secondaryHex: '#38bdf8',
-    diagram: 'tenders',
+    ...TENDERS_STAND,
   });
 }
 

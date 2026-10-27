@@ -165,6 +165,24 @@ export interface WorldTelemetry {
   spaceFactor: number;   // 0..1 cosmic flight progress
 }
 
+// Integrated / software GPUs (old Intel HD/UHD, SwiftShader ...) get the lighter "weak" profile
+// from the first frame instead of crawling at 15-20 fps until the governor has stepped down.
+// Also remembered across visits once the governor had to go all the way down.
+function probeWeakGpu(): boolean {
+  try {
+    if (localStorage.getItem('td-weak') === '1') return true;
+    const c = document.createElement('canvas');
+    const gl = (c.getContext('webgl') || c.getContext('experimental-webgl')) as WebGLRenderingContext | null;
+    if (!gl) return false;
+    const ext = gl.getExtension('WEBGL_debug_renderer_info');
+    const name = ext ? String(gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)) : '';
+    gl.getExtension('WEBGL_lose_context')?.loseContext();
+    return /Intel\(R\)\s*(HD|UHD)|Intel HD|\bGMA\b|SwiftShader|llvmpipe|Basic Render/i.test(name);
+  } catch {
+    return false;
+  }
+}
+
 export class WorldSceneEngine {
   private container: HTMLElement;
   private renderer: THREE.WebGLRenderer;
@@ -261,6 +279,14 @@ export class WorldSceneEngine {
   private sharpBoost = 0.3; // extra strength on the opening street (posters)
   private sharpFixed = false;
   private sharpCur = 0.12;
+  private weak = false; // integrated / software GPU: lighter profile from the first frame
+  private reflScale = 0.5; // planar reflection target size relative to the screen
+  private smaaPass: SMAAPass | null = null;
+  private weakSaved = false;
+  private lastShadowPos = new THREE.Vector3(1e6, 0, 0);
+  private lastShadowT = 0;
+  private rawAccum = 0; // real (unclamped) frame time, for the fps readout only
+  private displayFps = 60;
   private dipStreak = 0; // consecutive slow governor windows
   private upStreak = 0; // consecutive windows with headroom
   private ssDowns = 0; // times a supersampled resolution had to be stepped back down
@@ -318,6 +344,15 @@ export class WorldSceneEngine {
       this.reflectionDisabled = true;
       this.qualityTier = 2; // reflection already off; next governor step drops bloom
     }
+    // Weak GPU (old Intel HD/UHD, software rendering): fewer lights, cheaper shadow filter,
+    // FXAA instead of SMAA, half-res bloom, smaller reflection, no supersampling.
+    this.weak = !this.mobile && (qParam === 'weak' || (!qParam && probeWeakGpu()));
+    if (this.weak) {
+      this.bloomScale = 0.5;
+      this.LIGHT_POOL_SIZE = 4;
+      this.dprCap = 1.25;
+      this.reflScale = 0.33;
+    }
     // ?dpr=1.5|1.75|2 pins the render resolution (to judge sharpness vs fps on a phone)
     const dprParam = parseFloat(params.get('dpr') ?? '');
     if (Number.isFinite(dprParam) && dprParam >= 1 && dprParam <= 3) {
@@ -330,7 +365,7 @@ export class WorldSceneEngine {
     const nativeDpr = window.devicePixelRatio || 1;
     const pixelRatio = this.dprPinned
       ? this.dprCap
-      : Math.min(nativeDpr, 2);
+      : Math.min(nativeDpr, 2, this.weak ? this.dprCap : 2);
     this.currentDpr = pixelRatio;
 
     this.renderer = new THREE.WebGLRenderer({
@@ -339,11 +374,14 @@ export class WorldSceneEngine {
       stencil: false,
     });
     this.renderer.info.autoReset = false;
+    // Reading the link status of every program right after compiling makes the browser wait for
+    // each one (a multi-second freeze on a weak machine); only the debug builds need the log.
+    this.renderer.debug.checkShaderErrors = params.has('debug') || params.has('dev') || params.has('chk');
     this.renderer.setSize(width, height);
     this.renderer.setPixelRatio(pixelRatio);
     this.renderer.shadowMap.enabled = !this.mobile;
     this.renderer.shadowMap.autoUpdate = false; // driven manually every 2nd frame
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.shadowMap.type = this.weak ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.04;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -384,7 +422,9 @@ export class WorldSceneEngine {
       (f) => {
         treeFrac = f;
         report();
-      }
+      },
+      // leaves are alpha-tested double-sided quads: the costliest thing in the shadow pass
+      { leafShadows: !this.weak && !this.mobile }
     );
 
     // Build Act III Space Cosmos & Starfield Warp
@@ -407,7 +447,13 @@ export class WorldSceneEngine {
     this.fireTrails = createFireTrails(this.scene);
     // Loading screen waits for the car AND the tree GLB; tree shaders get a
     // second compile so they never stutter on first appearance.
-    this.ready = Promise.all([this.vehicle.ready, treesReady]).then(() => {
+    const params0 = new URLSearchParams(window.location.search);
+    this.ready = Promise.all([this.vehicle.ready, treesReady]).then(async () => {
+      // Let the loader paint 100%, compile every shader in parallel (the page stays alive), and
+      // only then do the one forced full frame, which now finds everything ready.
+      await new Promise<void>((r) => requestAnimationFrame(() => setTimeout(r, 30)));
+      if (!params0.has('noasync')) await this.precompileAsync();
+      await new Promise<void>((r) => requestAnimationFrame(() => r()));
       this.warmUp();
     });
 
@@ -420,8 +466,8 @@ export class WorldSceneEngine {
     });
 
     // (phones never render the reflection pass, so keep its target tiny)
-    const reflW = this.mobile ? 64 : Math.max(256, Math.floor(width * pixelRatio * 0.5));
-    const reflH = this.mobile ? 64 : Math.max(256, Math.floor(height * pixelRatio * 0.5));
+    const reflW = this.mobile ? 64 : Math.max(256, Math.floor(width * pixelRatio * this.reflScale));
+    const reflH = this.mobile ? 64 : Math.max(256, Math.floor(height * pixelRatio * this.reflScale));
     this.reflectRT = new THREE.WebGLRenderTarget(reflW, reflH, {
       minFilter: THREE.LinearFilter,
       magFilter: THREE.LinearFilter,
@@ -474,7 +520,19 @@ export class WorldSceneEngine {
       this.updateFxaa();
       this.bloomPass.setSize(width * this.bloomScale, height * this.bloomScale);
     } else {
-      this.composer.addPass(new SMAAPass(width, height));
+      // FXAA also exists on desktop: from the start on weak GPUs (SMAA is three full-screen
+      // passes), and as the governor's last-but-one step on the others.
+      this.fxaaPass = new ShaderPass(FXAAShader);
+      if (this.weak) {
+        this.composer.addPass(this.fxaaPass);
+        this.bloomPass.setSize(width * this.bloomScale, height * this.bloomScale);
+      } else {
+        this.smaaPass = new SMAAPass(width, height);
+        this.composer.addPass(this.smaaPass);
+        this.fxaaPass.enabled = false;
+        this.composer.addPass(this.fxaaPass);
+      }
+      this.updateFxaa();
       // A light contrast-adaptive sharpen after SMAA brings back the edge crispness that the
       // downsampled image and the AA smoothing take away. Kept low overall; the opening street
       // (Act I, where the small gantry posters must read) gets extra, see the animate loop.
@@ -491,7 +549,7 @@ export class WorldSceneEngine {
 
     // Precompile all shaders behind the loading screen — kills first-frame
     // compile hitches when the world first becomes visible.
-    this.renderer.compile(this.scene, this.camera);
+    // (done after the assets arrive instead, in parallel: see precompileAsync)
 
     this.jumpToZone(WORLD_ZONES[0].id, true);
     // Spawn the car just behind the intro camera so it drives into frame.
@@ -544,7 +602,7 @@ export class WorldSceneEngine {
   private panelShiftCur = 0;
   private viewOffsetOn = false;
   public setPanelShift(fraction: number) {
-    this.panelShift = Math.max(0, Math.min(0.4, fraction));
+    this.panelShift = Math.max(-0.4, Math.min(0.4, fraction));
   }
 
   public setPaused(p: boolean) {
@@ -748,6 +806,13 @@ export class WorldSceneEngine {
       desiredLook.set(carPos.x, carPos.y + 3.0, carPos.z - 4.0);
     }
 
+    // Mouse-wheel zoom (every mode, also the space ascent): scales the camera's offset from
+    // the car, eased. The wheel no longer drives the car.
+    this.userZoomCur += (this.userZoom - this.userZoomCur) * (1 - Math.exp(-8 * dt));
+    if (Math.abs(this.userZoomCur - 1) > 0.002) {
+      desiredPos.sub(carPos).multiplyScalar(this.userZoomCur).add(carPos);
+    }
+
     // Intro: hold a fixed roadside camera while the DeLorean pulls in from
     // behind, then blend into the normal chase pose over ~2s.
     if (this.introT < 3.4) {
@@ -778,7 +843,7 @@ export class WorldSceneEngine {
     // stays centred in the free part. Eased, and cleared again once it is back to 0.
     this.panelShiftCur += (this.panelShift - this.panelShiftCur) * (1 - Math.exp(-6 * dt));
     if (Math.abs(this.panelShift - this.panelShiftCur) < 0.0005) this.panelShiftCur = this.panelShift;
-    if (this.panelShiftCur > 0.0005) {
+    if (Math.abs(this.panelShiftCur) > 0.0005) {
       this.camera.setViewOffset(this.viewW, this.viewH, this.panelShiftCur * this.viewW, 0, this.viewW, this.viewH);
       this.viewOffsetOn = true;
     } else if (this.viewOffsetOn) {
@@ -867,7 +932,8 @@ export class WorldSceneEngine {
       this.setDpr(this.pendingDpr);
       this.pendingDpr = null;
     }
-    const dt = Math.min((now - this.lastPerfTime) * 0.001, 0.05);
+    const rawDt = (now - this.lastPerfTime) * 0.001;
+    const dt = Math.min(rawDt, 0.05);
     this.lastPerfTime = now;
     this.elapsedTime += dt;
 
@@ -1026,10 +1092,24 @@ export class WorldSceneEngine {
     // The two heavy extra passes alternate: shadows on even frames, the planar reflection on
     // odd ones. Sharing the even frames made heavy and light frames alternate (micro-judder
     // on weak GPUs even at a decent average fps); now the cost is spread evenly.
-    this.renderer.shadowMap.needsUpdate =
-      !this.cityHidden && this.frameCounter % (heavyZone ? 3 : 2) === 0;
+    // Shadows: on the heavy street they refresh when the car has moved (or after a quarter
+    // of a second) instead of by frame count, so the car's shadow never trails behind it.
+    const sp = this.vehicle.position;
+    let shadowNow: boolean;
+    if (!heavyZone) {
+      shadowNow = this.frameCounter % 2 === 0;
+    } else {
+      const moved = Math.abs(sp.x - this.lastShadowPos.x) + Math.abs(sp.y - this.lastShadowPos.y) + Math.abs(sp.z - this.lastShadowPos.z);
+      shadowNow = moved > 0.9 || this.elapsedTime - this.lastShadowT > 0.25;
+    }
+    shadowNow = shadowNow && !this.cityHidden;
+    if (shadowNow) {
+      this.lastShadowPos.copy(sp);
+      this.lastShadowT = this.elapsedTime;
+    }
+    this.renderer.shadowMap.needsUpdate = shadowNow;
 
-    if (this.frameCounter % (heavyZone ? 3 : 2) === 1) {
+    if (this.frameCounter % (heavyZone ? 3 : 2) === 1 && !(heavyZone && shadowNow)) {
       this.updatePlanarReflection();
     }
     // Desktop CAS: stronger on the opening street so the gantry posters read, light elsewhere
@@ -1043,9 +1123,12 @@ export class WorldSceneEngine {
     this.frameCounter++;
     this.fpsFrames++;
     this.fpsAccum += dt;
+    this.rawAccum += rawDt;
     // Telemetry re-renders the whole React tree: every 0.12s is too often on a phone CPU
     if (this.fpsAccum >= (this.mobile ? 0.4 : 0.12)) {
-      this.currentFps = Math.round(this.fpsFrames / this.fpsAccum);
+      this.currentFps = Math.round(this.fpsFrames / this.fpsAccum); // clamped: what the governor uses
+      this.displayFps = Math.round(this.fpsFrames / Math.max(this.rawAccum, 1e-3)); // real, for the readout
+      this.rawAccum = 0;
       this.fpsFrames = 0;
       this.fpsAccum = 0;
       this.emitTelemetry();
@@ -1104,9 +1187,17 @@ export class WorldSceneEngine {
 
       // Quality governor: ~4s of sustained low FPS steps the scene down a tier
       this.lowStreak = this.currentFps < target * 0.7 ? this.lowStreak + 1 : 0;
-      if (this.lowStreak >= 2 && this.qualityTier < 3) {
+      if (this.lowStreak >= 2 && this.qualityTier < 4) {
         this.lowStreak = 0;
         this.applyQualityTier(++this.qualityTier);
+      } else if (this.lowStreak >= 3 && this.qualityTier >= 4 && !this.weakSaved) {
+        // Every step taken and still slow: remember it, the next visit starts in the weak profile
+        this.weakSaved = true;
+        try {
+          localStorage.setItem('td-weak', '1');
+        } catch {
+          /* private mode */
+        }
       }
     }
   };
@@ -1117,8 +1208,12 @@ export class WorldSceneEngine {
       this.pendingDpr = 1.0; // applied (and clamped to the cap) at the start of the next frame
     } else if (tier === 2) {
       this.reflectionDisabled = true;
-    } else {
+    } else if (tier === 3) {
       this.bloomPass.enabled = false;
+    } else if (this.smaaPass && this.fxaaPass) {
+      // last step: three SMAA passes -> one FXAA pass
+      this.smaaPass.enabled = false;
+      this.fxaaPass.enabled = true;
     }
   }
 
@@ -1130,9 +1225,9 @@ export class WorldSceneEngine {
     const spaceFactor = THREE.MathUtils.clamp((yPos - 5) / 55 + (-442 - zPos) / 35, 0, 1);
 
     this.onTelemetry({
-      fps: this.currentFps,
+      fps: this.displayFps,
       drawCalls: this.renderer.info.render.calls,
-      profile: `${this.mobile ? 'mobile' : 'full'} · ${this.frameCap ? 'cap' + this.frameCap : 'uncapped'} · dpr${this.currentDpr.toFixed(2)}${this.dprPinned ? ' pinned' : ''}${this.ctxLost ? ' · CTX LOST x' + this.ctxLost : ''}`,
+      profile: `${this.mobile ? 'mobile' : this.weak ? 'weak' : 'full'} · ${this.frameCap ? 'cap' + this.frameCap : 'uncapped'} · dpr${this.currentDpr.toFixed(2)}${this.dprPinned ? ' pinned' : ''}${this.ctxLost ? ' · CTX LOST x' + this.ctxLost : ''}`,
       triangles: this.renderer.info.render.triangles,
       speedKmh: Math.round(Math.abs(this.vehicle.speed) * 3.2),
       zPos: Math.round(zPos),
@@ -1174,26 +1269,19 @@ export class WorldSceneEngine {
     this.isPointerDown = false;
   };
 
+  // The wheel only zooms the camera (closer / further), in every mode; it never moves the car.
+  private userZoom = 1;
+  private userZoomCur = 1;
   private handleWheel = (e: WheelEvent) => {
     e.preventDefault();
-    if (this.cameraMode === 'orbit') {
-      this.orbitDist = THREE.MathUtils.clamp(this.orbitDist + e.deltaY * 0.015, 5.5, 65);
-    } else {
-      if (this.activeStation && e.deltaY > 0) {
-        this.clearedStations.add(this.activeStation);
-        this.activeStation = null;
-      }
-      this.vehicle.position.z = THREE.MathUtils.clamp(
-        this.vehicle.position.z - e.deltaY * 0.045,
-        -485,
-        340
-      );
-    }
+    const dy = e.deltaMode === 1 ? e.deltaY * 33 : e.deltaY;
+    this.userZoom = THREE.MathUtils.clamp(this.userZoom * Math.exp(dy * 0.0011), 0.55, 2.2);
   };
 
   // Highest pixel ratio worth rendering: the screen's own, or 2x on desktop (supersampling)
   private maxRenderDpr() {
     const native = window.devicePixelRatio || 1;
+    if (this.weak) return Math.min(native, 1.25);
     return this.mobile ? native : Math.max(native, 2);
   }
 
@@ -1209,8 +1297,8 @@ export class WorldSceneEngine {
     this.composer.setSize(this.viewW, this.viewH);
     this.bloomPass.setSize(this.viewW * this.bloomScale, this.viewH * this.bloomScale);
     this.reflectRT.setSize(
-      this.mobile ? 64 : Math.max(256, Math.floor(this.viewW * next * 0.5)),
-      this.mobile ? 64 : Math.max(256, Math.floor(this.viewH * next * 0.5))
+      this.mobile ? 64 : Math.max(256, Math.floor(this.viewW * next * this.reflScale)),
+      this.mobile ? 64 : Math.max(256, Math.floor(this.viewH * next * this.reflScale))
     );
     this.updateFxaa();
   }
@@ -1226,6 +1314,22 @@ export class WorldSceneEngine {
   // One real composer frame with EVERYTHING forced visible: compiles the
   // render-target shader variants (space group, trees, reflections, shadow
   // depth) behind the loading screen instead of mid-launch (was 150-530ms).
+  // Compiles every material of the whole world (all groups forced visible for the call) with the
+  // browser's parallel shader compilation; the main thread keeps running meanwhile.
+  private async precompileAsync() {
+    const groups = [this.avenue.group, this.archGroup, this.spaceCosmos.group];
+    const prev = groups.map((g) => g.visible);
+    groups.forEach((g) => (g.visible = true));
+    let p: Promise<unknown>;
+    try {
+      p = this.renderer.compileAsync(this.scene, this.camera).catch(() => undefined);
+    } catch {
+      p = Promise.resolve();
+    }
+    groups.forEach((g, i) => (g.visible = prev[i])); // the collecting part of the call is synchronous
+    await p;
+  }
+
   private warmUp() {
     const prevAvenue = this.avenue.group.visible;
     const prevArch = this.archGroup.visible;
@@ -1275,8 +1379,8 @@ export class WorldSceneEngine {
     this.composer.setSize(width, height);
     this.bloomPass.setSize(width * this.bloomScale, height * this.bloomScale);
     this.reflectRT.setSize(
-      this.mobile ? 64 : Math.max(256, Math.floor(width * pixelRatio * 0.5)),
-      this.mobile ? 64 : Math.max(256, Math.floor(height * pixelRatio * 0.5))
+      this.mobile ? 64 : Math.max(256, Math.floor(width * pixelRatio * this.reflScale)),
+      this.mobile ? 64 : Math.max(256, Math.floor(height * pixelRatio * this.reflScale))
     );
     this.updateFxaa();
     // Resizing cleared the canvas: redraw in the same task so no black frame is shown
