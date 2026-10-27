@@ -330,9 +330,12 @@ export class ArchitectureBuilder {
       metrics: string[];
       accentHex: string;
       secondaryHex: string;
-    }
+    },
+    // Optional live texture (e.g. the browser-window site screen); replaces the
+    // drawn title card.
+    customMap?: THREE.Texture
   ) {
-    const tex = createShowcaseScreenTexture(opts, this.anisotropy);
+    const tex = customMap ?? createShowcaseScreenTexture(opts, this.anisotropy);
     const mat = new THREE.MeshStandardMaterial({
       map: tex,
       emissiveMap: tex,

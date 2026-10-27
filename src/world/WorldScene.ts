@@ -7,6 +7,7 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { FXAAShader } from 'three/examples/jsm/shaders/FXAAShader.js';
 import { createSharpenPass } from './sharpen';
+import type { SiteScreen } from './siteScreen';
 import { TransitionDirector, createTransitionPass, TRANSITION_TUNING } from './transitions';
 import { createFireTrails, FireTrails } from './fireTrails';
 import { createTextureLibrary } from './textures';
@@ -264,6 +265,9 @@ export class WorldSceneEngine {
   private cityHidden = false;
   private treesGroup: THREE.Object3D | null = null;
   public onFlash?: (v: number, kind: 'jump' | 'launch' | null) => void;
+  /** Fired when the stand of stop 01 switches to another client site. */
+  public onWebSite?: (index: number) => void;
+  private webScreen!: SiteScreen;
 
   private animFrameId = 0;
   private lastPerfTime = performance.now();
@@ -356,6 +360,8 @@ export class WorldSceneEngine {
 
     const archResult = buildWorldArchitecture(palette, texLib.maxAnisotropy);
     this.archGroup = archResult.group;
+    this.webScreen = archResult.webScreen;
+    this.webScreen.onChange = (i) => this.onWebSite?.(i);
     this.scene.add(this.archGroup);
 
     // Load real 3D elm trees (`tree_elm.glb`) onto sidewalk planter islands, park mounds & Confluence terraces!
@@ -497,6 +503,15 @@ export class WorldSceneEngine {
 
     this.lastPerfTime = performance.now();
     this.animate(palette);
+  }
+
+  /** Show a given client site on the stand of stop 01 (and hold it for a while). */
+  public setWebSite(i: number) {
+    this.webScreen.select(i, true);
+  }
+
+  public getWebSite(): number {
+    return this.webScreen.index;
   }
 
   /** Pause/resume the whole simulation + rendering (e.g. while asking to rotate a phone).
@@ -938,6 +953,8 @@ export class WorldSceneEngine {
     this.avenue.update(this.elapsedTime);
     this.envSystem.update(this.elapsedTime, this.vehicle.position);
     this.spaceCosmos.update(this.elapsedTime, this.vehicle.position, spaceFactor, this.vehicle.speed);
+    // The sites stand only redraws (and loads its screenshots) while the stop is near
+    this.webScreen.update(this.elapsedTime, zPos < 170 && zPos > -340 && !this.cityHidden);
     palette.updateUniforms(this.elapsedTime);
 
     if (this.frameCounter % 3 === 0) {

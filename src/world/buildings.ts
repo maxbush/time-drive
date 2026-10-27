@@ -3,6 +3,7 @@ import { ArchitectureBuilder, LightAnchor, MatKey } from './architectureBuilder'
 import { MaterialPalette } from './materials';
 import { mulberry32 } from './textures';
 import { TreePlacement } from './trees';
+import { createSiteScreen, SiteScreen } from './siteScreen';
 
 interface FacadeAxis {
   nx: number;
@@ -694,6 +695,7 @@ function buildDesignerProjectTotem(
     metrics: string[];
     accentHex: string;
     secondaryHex: string;
+    customMap?: THREE.Texture;
   }
 ) {
   const isWest = opts.side === 'WEST';
@@ -729,7 +731,8 @@ function buildDesignerProjectTotem(
       metrics: opts.metrics,
       accentHex: opts.accentHex,
       secondaryHex: opts.secondaryHex,
-    }
+    },
+    opts.customMap
   );
 }
 
@@ -878,7 +881,11 @@ function buildRibbedGateVault(b: ArchitectureBuilder) {
 // Left: Kestrel Sky-Atrium with Circular Ring Chandeliers + Confluence Pavilion
 // Right: Exact Confluence Cascading Rounded Terraces (Screenshot 3!)
 // ============================================================================
-function buildCluster1WebArchitecture(b: ArchitectureBuilder, treePlacements: TreePlacement[]) {
+function buildCluster1WebArchitecture(
+  b: ArchitectureBuilder,
+  treePlacements: TreePlacement[],
+  webMap?: THREE.Texture
+) {
   const groundY = 0.17;
   const zMin = -152;
   const zMax = -68;
@@ -965,6 +972,7 @@ function buildCluster1WebArchitecture(b: ArchitectureBuilder, treePlacements: Tr
     metrics: ['ПОД КЛЮЧ|от идеи до запуска', 'NEXT.JS · TS|современный стек', '3D · WEBGL|живой интерактив'],
     accentHex: '#f59e0b',
     secondaryHex: '#38bdf8',
+    customMap: webMap, // the live browser-window screen of the client sites
   });
 }
 
@@ -1208,7 +1216,7 @@ function buildCluster3TendersAndContinuum(b: ArchitectureBuilder, treePlacements
 export function buildWorldArchitecture(
   palette: MaterialPalette,
   maxAnisotropy: number
-): { group: THREE.Group; lightAnchors: LightAnchor[]; treePlacements: TreePlacement[] } {
+): { group: THREE.Group; lightAnchors: LightAnchor[]; treePlacements: TreePlacement[]; webScreen: SiteScreen } {
   const builder = new ArchitectureBuilder(maxAnisotropy);
   const treePlacements: TreePlacement[] = [];
 
@@ -1595,7 +1603,8 @@ export function buildWorldArchitecture(
 
   buildAct1SignsAndGantries(builder);
   buildRibbedGateVault(builder);
-  buildCluster1WebArchitecture(builder, treePlacements);
+  const webScreen = createSiteScreen(maxAnisotropy);
+  buildCluster1WebArchitecture(builder, treePlacements, webScreen.texture);
   buildCluster2AlbionAndSpindle(builder, treePlacements);
   buildCluster3TendersAndContinuum(builder, treePlacements);
 
@@ -1603,5 +1612,6 @@ export function buildWorldArchitecture(
     group: builder.buildGroup(palette),
     lightAnchors: builder.lightAnchors,
     treePlacements,
+    webScreen,
   };
 }

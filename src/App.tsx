@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { WORLD_ZONES, WorldSceneEngine, WorldTelemetry } from './world/WorldScene';
-import { PROJECTS, ProjectId } from './content';
+import { CHAPTERS, PROJECTS, ProjectId } from './content';
 import { Loader } from './ui/Loader';
 import { TopBar } from './ui/TopBar';
 import { ChapterBar } from './ui/ChapterBar';
@@ -24,6 +24,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [loadPct, setLoadPct] = useState(0);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [webSite, setWebSite] = useState(0); // which client site the stand of stop 01 shows
   const [contact, setContact] = useState<{ open: boolean; subject: string }>({ open: false, subject: '' });
   const flashRef = useRef<HTMLDivElement>(null);
   const flashLabelRef = useRef<HTMLDivElement>(null);
@@ -91,6 +92,7 @@ export default function App() {
     engineRef.current = engine;
     engine.setPaused(pausedRef.current);
     engine.ready.then(() => setLoading(false));
+    engine.onWebSite = (i) => setWebSite(i);
     let lastFlashKind: 'jump' | 'launch' | null = null;
     engine.onFlash = (v, kind) => {
       if (flashRef.current) flashRef.current.style.opacity = String(v);
@@ -130,6 +132,12 @@ export default function App() {
 
   const openContact = (subject: string) => setContact({ open: true, subject });
   const engine = () => engineRef.current;
+  const pickSite = (i: number) => {
+    setWebSite(i);
+    engine()?.setWebSite(i);
+  };
+  const chIdx = Math.max(0, CHAPTERS.findIndex((c) => c.id === telemetry.activeZoneId));
+  const chapter = `Глава ${String(chIdx + 1).padStart(2, '0')} · ${CHAPTERS[chIdx].label}`;
 
   return (
     <div className="relative h-full w-full select-none overflow-hidden bg-[#05070b]">
@@ -174,20 +182,27 @@ export default function App() {
 
       {hudVisible && (
         <>
-          <TopBar onContact={() => openContact('Связаться')} touch={isPhone} />
+          {/* soft top / bottom scrims so thin text stays legible over bright sky or road */}
+          <div className="pointer-events-none fixed inset-x-0 top-0 z-10 h-24 bg-gradient-to-b from-black/60 via-black/25 to-transparent" />
+          <div className="pointer-events-none fixed inset-x-0 bottom-0 z-10 h-28 bg-gradient-to-t from-black/70 via-black/30 to-transparent" />
+          <TopBar onContact={() => openContact('Связаться')} touch={isPhone} chapter={chapter} />
 
           {activeProject && !drawerOpen && (
             <ProjectCard
               project={activeProject}
+              webSite={webSite}
+              onPickSite={pickSite}
               onDetails={() => setDrawerOpen(true)}
-              onDemo={() => openContact(activeProject.demoSubject)}
+              onCta={() => openContact(activeProject.demoSubject)}
             />
           )}
           {activeProject && drawerOpen && (
             <ProjectDrawer
               project={activeProject}
+              webSite={webSite}
+              onPickSite={pickSite}
               onClose={() => setDrawerOpen(false)}
-              onDemo={() => openContact(activeProject.demoSubject)}
+              onCta={() => openContact(activeProject.demoSubject)}
             />
           )}
 
@@ -202,6 +217,7 @@ export default function App() {
             activeId={telemetry.activeZoneId}
             progressPct={progressPct}
             atStation={station !== null}
+            finale={showFinale}
             autoCruise={telemetry.autoCruise}
             onJump={(id) => engine()?.jumpToZone(id)}
             onToggle={() => engine()?.toggleAutoCruise()}

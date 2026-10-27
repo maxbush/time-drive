@@ -1,36 +1,47 @@
 import { useState } from 'react';
-import { CircleHelp, MessageSquare } from 'lucide-react';
+import { CircleHelp } from 'lucide-react';
 import { OWNER, UI } from '../content';
 
-// Minimal top bar: who this is on the left; contacts + a tiny "?" on the right.
-export function TopBar({ onContact, touch }: { onContact: () => void; touch: boolean }) {
+// One thin line: the name and the current chapter on the left; contacts and a small
+// "?" on the right. Text only, no boxes.
+export function TopBar({
+  onContact,
+  touch,
+  chapter,
+}: {
+  onContact: () => void;
+  touch: boolean;
+  chapter: string;
+}) {
   const [helpOpen, setHelpOpen] = useState(false);
   return (
-    <header className="pointer-events-none fixed inset-x-0 top-0 z-20 flex items-start justify-between gap-3 px-4 pt-3 sm:px-6 sm:pt-4">
-      <div className="pointer-events-auto">
-        <div className="text-sm font-semibold tracking-tight text-white sm:text-base">{OWNER.name}</div>
-        <div className="mt-0.5 font-mono text-[10px] uppercase tracking-[0.22em] text-slate-400">{OWNER.role}</div>
+    <header className="pointer-events-none fixed inset-x-0 top-0 z-20 flex items-start justify-between gap-3 px-4 pt-3 sm:px-8 sm:pt-5">
+      <div className="pointer-events-auto flex min-w-0 items-center gap-3">
+        <span className="whitespace-nowrap text-[13px] font-medium uppercase tracking-[0.2em] text-white">
+          {OWNER.name}
+        </span>
+        <span className="h-3 w-px shrink-0 bg-white/25" />
+        <span className="truncate font-mono text-[10px] uppercase tracking-[0.22em] text-slate-300">{chapter}</span>
       </div>
 
-      <div className="pointer-events-auto relative flex items-center gap-2">
+      <div className="pointer-events-auto relative flex items-center gap-4">
         <button
           onClick={() => setHelpOpen((v) => !v)}
           aria-label={UI.help}
           title={UI.help}
-          className="grid h-8 w-8 place-items-center rounded-full border border-white/12 bg-[#0a0e16]/70 text-slate-300 transition hover:border-white/30 hover:text-white"
+          className="text-slate-400 transition hover:text-white"
         >
-          <CircleHelp size={16} />
+          <CircleHelp size={15} />
         </button>
         <button
           onClick={onContact}
-          className="flex h-8 items-center gap-2 rounded-full border border-amber-300/50 bg-amber-300/10 px-3.5 text-xs font-medium text-amber-100 transition hover:bg-amber-300 hover:text-slate-950"
+          className="border-b border-white/40 pb-0.5 font-mono text-[11px] uppercase tracking-[0.2em] text-white transition hover:border-amber-300 hover:text-amber-200"
         >
-          <MessageSquare size={14} />
           {UI.contact}
         </button>
 
         {helpOpen && (
-          <div className="absolute right-0 top-10 w-64 rounded-xl border border-white/10 bg-[#0a0e16]/92 p-3.5 text-xs shadow-[0_18px_50px_rgba(0,0,0,0.6)]">
+          <div className="absolute right-0 top-9 w-64 rounded-xl border border-white/10 bg-[#060a12]/94 p-3.5 text-xs shadow-[0_18px_50px_rgba(0,0,0,0.6)]">
             {touch ? (
               <p className="leading-relaxed text-slate-300">{UI.helpTouch}</p>
             ) : (
