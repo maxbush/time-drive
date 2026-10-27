@@ -6,6 +6,7 @@ import { SMAAPass } from 'three/examples/jsm/postprocessing/SMAAPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { FXAAShader } from 'three/examples/jsm/shaders/FXAAShader.js';
+import { createSharpenPass } from './sharpen';
 import { TransitionDirector, createTransitionPass, TRANSITION_TUNING } from './transitions';
 import { createFireTrails, FireTrails } from './fireTrails';
 import { createTextureLibrary } from './textures';
@@ -206,6 +207,16 @@ export class WorldSceneEngine {
   private frameCap = 0; // 0 = uncapped, else target FPS
   private capStreak = 0;
   private paused = false;
+  // DPR changes are queued and applied at the START of the next frame, right before
+  // rendering: resizing the canvas clears it, and doing that at the end of a frame
+  // let the compositor present one black frame (the "blinking black screen").
+  private pendingDpr: number | null = null;
+  private dprPinned = false; // ?dpr=N pins the resolution (testing sharpness vs fps)
+  private dprDowns = 0; // phones: after a step down we never step back up (no thrash)
+  private sharpPass: ShaderPass | null = null;
+  private ctxLost = 0;
+  private readonly _dPos = new THREE.Vector3();
+  private readonly _dLook = new THREE.Vector3();
   private fxaaPass: ShaderPass | null = null;
   private lastLightSortPos = new THREE.Vector3(1e9, 0, 0);
 
@@ -292,7 +303,16 @@ export class WorldSceneEngine {
       this.reflectionDisabled = true;
       this.qualityTier = 2; // reflection already off; next governor step drops bloom
     }
-    const pixelRatio = Math.min(window.devicePixelRatio || 1, this.mobile ? 1.5 : 2);
+    // ?dpr=1.5|1.75|2 pins the render resolution (to judge sharpness vs fps on a phone)
+    const dprParam = parseFloat(params.get('dpr') ?? '');
+    if (Number.isFinite(dprParam) && dprParam >= 1 && dprParam <= 3) {
+      this.dprCap = dprParam;
+      this.dprPinned = true;
+    }
+    const pixelRatio = Math.min(
+      window.devicePixelRatio || 1,
+      this.dprPinned ? this.dprCap : this.mobile ? 1.5 : 2
+    );
     this.currentDpr = pixelRatio;
 
     this.renderer = new THREE.WebGLRenderer({
@@ -410,6 +430,15 @@ export class WorldSceneEngine {
       // One cheap FXAA pass instead of SMAA's three, and a half-res bloom
       this.fxaaPass = new ShaderPass(FXAAShader);
       this.composer.addPass(this.fxaaPass);
+      // CAS sharpen after FXAA: the scene is rendered below native res on phones
+      // and FXAA softens it further. ?sharp=0..1 (0 = off), default 0.55 (0.65 made the
+      // asphalt grain sparkle).
+      const sharpParam = parseFloat(params.get('sharp') ?? '');
+      const sharpness = Number.isFinite(sharpParam) ? sharpParam : 0.55;
+      if (sharpness > 0) {
+        this.sharpPass = createSharpenPass(sharpness);
+        this.composer.addPass(this.sharpPass);
+      }
       this.updateFxaa();
       this.bloomPass.setSize(width * this.bloomScale, height * this.bloomScale);
     } else {
@@ -453,6 +482,13 @@ export class WorldSceneEngine {
     window.addEventListener('pointermove', this.handlePointerMove);
     window.addEventListener('pointerup', this.handlePointerUp);
     dom.addEventListener('wheel', this.handleWheel, { passive: false });
+    // Phones can lose the GL context under memory pressure (shows up as a black flash).
+    // Keep the page alive and reload cleanly if the browser restores it.
+    dom.addEventListener('webglcontextlost', (e) => {
+      e.preventDefault();
+      this.ctxLost++;
+    });
+    dom.addEventListener('webglcontextrestored', () => window.location.reload());
 
     this.lastPerfTime = performance.now();
     this.animate(palette);
@@ -576,8 +612,8 @@ export class WorldSceneEngine {
     const carYaw = this.vehicle.heading;
     const carPitch = this.vehicle.pitchAngle;
 
-    const desiredPos = new THREE.Vector3();
-    const desiredLook = new THREE.Vector3();
+    const desiredPos = this._dPos.set(0, 0, 0); // reused (no per-frame allocation / GC)
+    const desiredLook = this._dLook.set(0, 0, 0);
     this.introT += dt;
 
     if (carPitch > 0.12) {
@@ -764,6 +800,11 @@ export class WorldSceneEngine {
     // Frame cap (phones that can't hold ~48 fps lock to an even 30 instead of
     // stuttering between 20 and 40). rAF keeps running, we just skip the frame.
     if (this.frameCap > 0 && now - this.lastPerfTime < 1000 / this.frameCap - 2) return;
+    if (this.pendingDpr !== null) {
+      // resize right before drawing, in the same task: no blank frame in between
+      this.setDpr(this.pendingDpr);
+      this.pendingDpr = null;
+    }
     const dt = Math.min((now - this.lastPerfTime) * 0.001, 0.05);
     this.lastPerfTime = now;
     this.elapsedTime += dt;
@@ -912,7 +953,8 @@ export class WorldSceneEngine {
     this.frameCounter++;
     this.fpsFrames++;
     this.fpsAccum += dt;
-    if (this.fpsAccum >= 0.12) {
+    // Telemetry re-renders the whole React tree: every 0.12s is too often on a phone CPU
+    if (this.fpsAccum >= (this.mobile ? 0.4 : 0.12)) {
       this.currentFps = Math.round(this.fpsFrames / this.fpsAccum);
       this.fpsFrames = 0;
       this.fpsAccum = 0;
@@ -932,10 +974,12 @@ export class WorldSceneEngine {
       const cur = DPR_STEPS.reduce((a, b) => (Math.abs(b - next) < Math.abs(a - next) ? b : a));
       if (this.currentFps < target * 0.83 && cur > floor) {
         next = DPR_STEPS[Math.max(0, DPR_STEPS.indexOf(cur) - 1)];
-      } else if (this.currentFps > target * 0.95 && cur < maxDpr) {
+        this.dprDowns++;
+      } else if (this.currentFps > target * 0.95 && cur < maxDpr && (!this.mobile || this.dprDowns === 0)) {
         next = Math.min(maxDpr, DPR_STEPS[Math.min(DPR_STEPS.length - 1, DPR_STEPS.indexOf(cur) + 1)]);
       }
-      this.setDpr(next);
+      // applied at the start of the next frame (see pendingDpr); pinned = never auto-change
+      if (!this.dprPinned && Math.abs(next - this.currentDpr) >= 0.01) this.pendingDpr = next;
 
       // Phones that can't hold ~48 fps settle on a steady 30 instead of 20-40 stutter.
       if (this.mobile && !this.frameCap) {
@@ -958,11 +1002,7 @@ export class WorldSceneEngine {
   private applyQualityTier(tier: number) {
     if (tier === 1) {
       this.dprCap = 1.0;
-      this.currentDpr = Math.min(this.currentDpr, 1.0);
-      this.renderer.setPixelRatio(this.currentDpr);
-      this.composer.setPixelRatio(this.currentDpr);
-      this.renderer.setSize(this.viewW, this.viewH);
-      this.composer.setSize(this.viewW, this.viewH);
+      this.pendingDpr = 1.0; // applied (and clamped to the cap) at the start of the next frame
     } else if (tier === 2) {
       this.reflectionDisabled = true;
     } else {
@@ -980,7 +1020,7 @@ export class WorldSceneEngine {
     this.onTelemetry({
       fps: this.currentFps,
       drawCalls: this.renderer.info.render.calls,
-      profile: `${this.mobile ? 'mobile' : 'full'} · ${this.frameCap ? 'cap' + this.frameCap : 'uncapped'} · dpr${this.currentDpr.toFixed(2)}`,
+      profile: `${this.mobile ? 'mobile' : 'full'} · ${this.frameCap ? 'cap' + this.frameCap : 'uncapped'} · dpr${this.currentDpr.toFixed(2)}${this.dprPinned ? ' pinned' : ''}${this.ctxLost ? ' · CTX LOST x' + this.ctxLost : ''}`,
       triangles: this.renderer.info.render.triangles,
       speedKmh: Math.round(Math.abs(this.vehicle.speed) * 3.2),
       zPos: Math.round(zPos),
@@ -1063,6 +1103,7 @@ export class WorldSceneEngine {
     const w = this.renderer.domElement.width || this.viewW;
     const h = this.renderer.domElement.height || this.viewH;
     this.fxaaPass.material.uniforms['resolution'].value.set(1 / w, 1 / h);
+    if (this.sharpPass) this.sharpPass.uniforms['resolution'].value.set(1 / w, 1 / h);
   }
 
   // One real composer frame with EVERYTHING forced visible: compiles the
@@ -1121,6 +1162,8 @@ export class WorldSceneEngine {
       this.mobile ? 64 : Math.max(256, Math.floor(height * pixelRatio * 0.5))
     );
     this.updateFxaa();
+    // Resizing cleared the canvas: redraw in the same task so no black frame is shown
+    if (!this.paused) this.composer.render();
   };
 
   private handleKeyDown = (e: KeyboardEvent) => {
