@@ -3,7 +3,6 @@ import { ArchitectureBuilder, LightAnchor, MatKey } from './architectureBuilder'
 import { MaterialPalette } from './materials';
 import { mulberry32 } from './textures';
 import { TreePlacement } from './trees';
-import { createSiteScreen, SiteScreen } from './siteScreen';
 import type { StandDiagram } from './standTexture';
 
 interface FacadeAxis {
@@ -887,7 +886,6 @@ function buildRibbedGateVault(b: ArchitectureBuilder) {
 function buildCluster1WebArchitecture(
   b: ArchitectureBuilder,
   treePlacements: TreePlacement[],
-  webMap?: THREE.Texture
 ) {
   const groundY = 0.17;
   const zMin = -152;
@@ -971,11 +969,10 @@ function buildCluster1WebArchitecture(
     z: -95,
     era: 'ПРОЕКТ 01 // ВЕБ',
     title: 'ВЕБ-ПЛАТФОРМЫ',
-    subtitle: 'Сайты и интерактив под ключ · 3D · Next.js',
-    metrics: ['ПОД КЛЮЧ|от идеи до запуска', 'NEXT.JS · TS|современный стек', '3D · WEBGL|живой интерактив'],
+    subtitle: 'Корпоративные сайты и лендинги под ключ',
+    metrics: ['ПОД КЛЮЧ|от идеи до запуска', 'ДИЗАЙН|и разработка', '3D · WEBGL|живой интерактив'],
     accentHex: '#f59e0b',
     secondaryHex: '#38bdf8',
-    customMap: webMap, // the live browser-window screen of the client sites
   });
 }
 
@@ -1073,7 +1070,7 @@ function buildCluster2AlbionAndSpindle(b: ArchitectureBuilder, treePlacements: T
     era: 'ПРОЕКТ 02 // АВТОМАТИЗАЦИЯ',
     title: 'ALBION BOT',
     subtitle: 'Ассистент координатора репетиторов',
-    metrics: ['MERITHUB|интеграция по API', 'TELEGRAM|уведомления', 'AI|заявки и сценарии'],
+    metrics: ['MERITHUB|интеграция по API', 'WHATSAPP · TELEGRAM|уведомления', 'AI|заявки и сценарии'],
     accentHex: '#38bdf8',
     secondaryHex: '#f59e0b',
     diagram: 'albion',
@@ -1221,7 +1218,7 @@ function buildCluster3TendersAndContinuum(b: ArchitectureBuilder, treePlacements
 export function buildWorldArchitecture(
   palette: MaterialPalette,
   maxAnisotropy: number
-): { group: THREE.Group; lightAnchors: LightAnchor[]; treePlacements: TreePlacement[]; webScreen: SiteScreen } {
+): { group: THREE.Group; lightAnchors: LightAnchor[]; treePlacements: TreePlacement[] } {
   const builder = new ArchitectureBuilder(maxAnisotropy);
   const treePlacements: TreePlacement[] = [];
 
@@ -1608,8 +1605,7 @@ export function buildWorldArchitecture(
 
   buildAct1SignsAndGantries(builder);
   buildRibbedGateVault(builder);
-  const webScreen = createSiteScreen(maxAnisotropy);
-  buildCluster1WebArchitecture(builder, treePlacements, webScreen.texture);
+  buildCluster1WebArchitecture(builder, treePlacements);
   buildCluster2AlbionAndSpindle(builder, treePlacements);
   buildCluster3TendersAndContinuum(builder, treePlacements);
 
@@ -1617,6 +1613,5 @@ export function buildWorldArchitecture(
     group: builder.buildGroup(palette),
     lightAnchors: builder.lightAnchors,
     treePlacements,
-    webScreen,
   };
 }

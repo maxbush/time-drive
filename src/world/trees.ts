@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 
 export interface TreePlacement {
   x: number;
@@ -17,7 +18,8 @@ export interface TreePlacement {
  */
 export function loadAndPlaceElmTrees(
   scene: THREE.Scene,
-  placements: TreePlacement[]
+  placements: TreePlacement[],
+  onProgress?: (fraction: number) => void
 ): Promise<void> {
   if (placements.length === 0) return Promise.resolve();
 
@@ -34,6 +36,7 @@ export function loadAndPlaceElmTrees(
   const placementChunks = [...chunks.values()];
 
   const loader = new GLTFLoader();
+  loader.setMeshoptDecoder(MeshoptDecoder);
   return new Promise<void>((resolve) => {
     loader.load(
     './models/tree_elm.glb',
@@ -67,6 +70,19 @@ export function loadAndPlaceElmTrees(
           for (const k of Object.keys(cloned.attributes)) {
             if (k !== 'position' && k !== 'normal' && k !== 'uv') {
               cloned.deleteAttribute(k);
+            } else {
+              // the compressed GLB is quantized (normalized ints): back to float so the
+              // matrix bake below and the merge work on plain Float32 data
+              const a = cloned.attributes[k];
+              if (!(a.array instanceof Float32Array) || a.normalized) {
+                const f = new Float32Array(a.count * a.itemSize);
+                for (let i = 0; i < a.count; i++) {
+                  f[i * a.itemSize] = a.getX(i);
+                  f[i * a.itemSize + 1] = a.getY(i);
+                  if (a.itemSize > 2) f[i * a.itemSize + 2] = a.getZ(i);
+                }
+                cloned.setAttribute(k, new THREE.BufferAttribute(f, a.itemSize));
+              }
             }
           }
           if (!cloned.attributes.normal) cloned.computeVertexNormals();
@@ -160,7 +176,9 @@ export function loadAndPlaceElmTrees(
       scene.add(treeGroup);
       resolve();
     },
-    undefined,
+    (ev) => {
+      if (onProgress && ev.total > 0) onProgress(Math.min(1, ev.loaded / ev.total));
+    },
     () => {
       resolve(); // Ignore if GLB missing
     }

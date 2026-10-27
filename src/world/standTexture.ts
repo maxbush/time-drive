@@ -98,7 +98,7 @@ function drawAlbion(ctx: Ctx, accent: string, soft: string) {
   const y = 410;
   node(ctx, 150, y, 190, 62, 'MeritHub', 'расписание, занятия', accent);
   node(ctx, 470, y, 190, 70, 'ALBION', 'ассистент координатора', accent, true);
-  node(ctx, 800, y - 62, 210, 56, 'Родитель', 'Telegram · кнопка «Всё в порядке»', accent);
+  node(ctx, 800, y - 62, 210, 56, 'Родитель', 'WhatsApp · Telegram', accent);
   node(ctx, 800, y + 62, 210, 56, 'Координатор', 'эскалация при молчании', accent);
   arrow(ctx, 247, y, 372, y, soft);
   arrow(ctx, 567, y - 12, 692, y - 58, soft);

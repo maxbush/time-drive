@@ -7,7 +7,15 @@ type Status = 'idle' | 'sending' | 'sent' | 'error' | 'unconfigured';
 // The feedback form, shared by the contact overlay and the space finale.
 // Destinations come from content.ts: Telegram / email links when configured, and the
 // form itself posts to Web3Forms (-> email) when a key is set.
-export function ContactForm({ subject, compact = false }: { subject: string; compact?: boolean }) {
+export function ContactForm({
+  subject,
+  compact = false,
+  large = false,
+}: {
+  subject: string;
+  compact?: boolean;
+  large?: boolean;
+}) {
   const [name, setName] = useState('');
   const [contact, setContact] = useState('');
   const [message, setMessage] = useState('');
@@ -46,8 +54,9 @@ export function ContactForm({ subject, compact = false }: { subject: string; com
     }
   };
 
-  const field =
-    'w-full border-0 border-b border-white/20 bg-transparent px-0 py-2 text-sm font-light text-white placeholder:text-slate-500 focus:border-amber-300 focus:outline-none';
+  const field = `w-full border-0 border-b border-white/20 bg-transparent px-0 font-light text-white placeholder:text-slate-500 focus:border-amber-300 focus:outline-none ${
+    large ? 'py-3 text-base short:py-1.5 short:text-sm' : 'py-2 text-sm'
+  }`;
 
   if (status === 'sent') {
     return (
@@ -88,7 +97,7 @@ export function ContactForm({ subject, compact = false }: { subject: string; com
         <input className={field} required value={contact} onChange={(e) => setContact(e.target.value)} placeholder={UI.formContact} />
         <textarea
           className={`${field} resize-none`}
-          rows={compact ? 2 : 3}
+          rows={compact ? 2 : large ? 4 : 3}
           value={message}
           onChange={(e) => setMessage(e.target.value)}
           placeholder={UI.formMessage}
