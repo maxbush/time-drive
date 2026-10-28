@@ -291,6 +291,37 @@ export class WorldSceneEngine {
   private sharpCur = 0.12;
   private treeLod: TreeLod | null = null; // full trees near the car, cheap ones far away
   private compileRT: THREE.WebGLRenderTarget | null = null;
+  private fovKickCur = 0;
+  // Frames longer than 50 ms, with what was going on (Ctrl+Alt+L copies the list: see handleKeyDown)
+  private hitches: Record<string, number | string | null>[] = [];
+  private noteHitch(now: number, dt: number) {
+    if (document.hidden) return;
+    if (this.hitches.length >= 80) this.hitches.shift();
+    const info = this.renderer.info;
+    this.hitches.push({
+      t: Math.round(now),
+      ms: Math.round(dt * 1000),
+      z: Math.round(this.vehicle.position.z),
+      y: Math.round(this.vehicle.position.y),
+      v: Math.round(this.vehicle.speed * 10) / 10,
+      dpr: this.currentDpr,
+      tier: this.qualityTier,
+      station: this.activeStation,
+      fx: this.trans.state.kind,
+      progs: info.programs?.length ?? null,
+      tex: info.memory.textures,
+      geo: info.memory.geometries,
+    });
+    if (new URLSearchParams(window.location.search).has('debug')) console.warn('[hitch]', JSON.stringify(this.hitches[this.hitches.length - 1]));
+  }
+  /** The recorded hitches as text (for pasting into a bug report). */
+  public hitchReport(): string {
+    return JSON.stringify(
+      { ua: navigator.userAgent, screen: [screen.width, screen.height, devicePixelRatio], view: [this.viewW, this.viewH], profile: (this.mobile ? 'mobile' : this.weak ? 'weak' : 'full') + ' tier' + this.qualityTier + ' dpr' + this.currentDpr, hitches: this.hitches },
+      null,
+      1
+    );
+  }
   private live = false; // set once everything is loaded, compiled and warmed up
   private weak = false; // integrated / software GPU: lighter profile from the first frame
   private reflScale = 0.5; // planar reflection target size relative to the screen
@@ -934,7 +965,11 @@ export class WorldSceneEngine {
     // Transition feel, applied AFTER the smoothing so the damper can't eat it:
     // FOV kick + procedural shake (position jitter + roll).
     const tr = this.trans.state;
-    const fovTarget = Math.min(105, this.baseFov + tr.fovKick);
+    // (the kick rises over ~3 frames instead of snapping in one: a 15 degree pop in a single frame reads as a
+    // stutter; the fall-off keeps the designed curve)
+    this.fovKickCur =
+      tr.fovKick > this.fovKickCur ? this.fovKickCur + (tr.fovKick - this.fovKickCur) * (1 - Math.exp(-40 * dt)) : tr.fovKick;
+    const fovTarget = Math.min(105, this.baseFov + this.fovKickCur);
     if (Math.abs(this.camera.fov - fovTarget) > 0.01) {
       this.camera.fov = fovTarget;
       this.camera.updateProjectionMatrix();
@@ -1035,11 +1070,14 @@ export class WorldSceneEngine {
     this.avenue.roadMesh.visible = true;
   }
 
-  private animate = (palette: ReturnType<typeof createMaterialPalette>) => {
+  private animate = (palette: ReturnType<typeof createMaterialPalette>, frameTime?: number) => {
     if (this.disposed) return;
-    this.animFrameId = requestAnimationFrame(() => this.animate(palette));
+    this.animFrameId = requestAnimationFrame((t) => this.animate(palette, t));
 
-    const now = performance.now();
+    // The time stamp rAF hands over is aligned to the display's refresh; performance.now() inside the
+    // callback also carries the jitter of when the callback happened to run, which shows up as
+    // uneven steps of the car and camera even at a steady 60 fps.
+    const now = frameTime ?? performance.now();
     if (this.paused || !this.live) {
       // (not live yet = still loading: nothing is rendered behind the loader. Rendering early made
       // the first frames compile every shader one by one on the main thread - a frozen loader.)
@@ -1054,7 +1092,8 @@ export class WorldSceneEngine {
       this.setDpr(this.pendingDpr);
       this.pendingDpr = null;
     }
-    const rawDt = (now - this.lastPerfTime) * 0.001;
+    const rawDt = Math.max(0, (now - this.lastPerfTime) * 0.001);
+    if (rawDt > 0.05) this.noteHitch(now, rawDt);
     const dt = Math.min(rawDt, 0.05); // governor / easing clock
     // The simulation clock follows real time up to 0.1 s per frame (it used to stop at 0.05 s, so
     // below 20 fps the whole journey ran in slow motion: at 12 fps it took 1.7x as long)
@@ -1622,6 +1661,25 @@ export class WorldSceneEngine {
   private handleKeyDown = (e: KeyboardEvent) => {
     const tag = (e.target as HTMLElement)?.tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+
+    // Ctrl+Alt+L: copy the list of recorded hitches (frames over 50 ms) for a bug report
+    if (e.ctrlKey && e.altKey && e.code === 'KeyL') {
+      const text = this.hitchReport();
+      const done = (msg: string) => {
+        const n = document.createElement('div');
+        n.textContent = msg;
+        n.style.cssText =
+          'position:fixed;left:50%;top:18px;transform:translateX(-50%);z-index:99;padding:8px 14px;border-radius:8px;background:rgba(5,10,20,.9);color:#fbbf24;font:12px ui-monospace,monospace;border:1px solid rgba(255,255,255,.2)';
+        document.body.appendChild(n);
+        window.setTimeout(() => n.remove(), 2600);
+      };
+      navigator.clipboard
+        ?.writeText(text)
+        .then(() => done('Лог скопирован: ' + this.hitches.length + ' подвисаний'))
+        .catch(() => done('Не удалось скопировать лог'));
+      console.info(text);
+      return;
+    }
 
     switch (e.code) {
       case 'KeyW':

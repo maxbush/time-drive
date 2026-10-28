@@ -182,7 +182,11 @@ export function ProjectDrawer({
                 <span className="ml-3 truncate font-mono text-[10px] text-slate-300">{site.domain}</span>
               </div>
               {!frameLoaded && (
-                <div className="absolute inset-x-0 top-9 bottom-0 flex items-center justify-center bg-[#0a0f18] font-mono text-[11px] uppercase tracking-[0.25em] text-slate-400">
+                <div className="absolute inset-x-0 top-9 bottom-0 flex flex-col items-center justify-center gap-4 overflow-hidden bg-[#0a0f18] font-mono text-[11px] uppercase tracking-[0.25em] text-slate-400">
+                  {/* Starting a live page costs the browser a few tenths of a second (a new frame, sometimes a
+                      new process). A transform animation runs on the compositor, so this bar keeps sliding
+                      smoothly through that stall instead of freezing with the page. */}
+                  <span className="site-sweep relative block h-[2px] w-40 overflow-hidden rounded-full bg-white/10" aria-hidden="true" />
                   Загружаем сайт…
                 </div>
               )}

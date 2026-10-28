@@ -205,23 +205,6 @@ export default function App() {
     return () => clearTimeout(t);
   }, [loading]);
 
-  // Decode the site previews while the first street is driven (idle time), so the panel at the
-  // web stop does not have to decode four images the moment it slides in.
-  useEffect(() => {
-    if (loading) return;
-    const idle = (window as unknown as { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number })
-      .requestIdleCallback;
-    const run = () =>
-      SITES.forEach((s) => {
-        const img = new Image();
-        img.decoding = 'async';
-        img.src = s.slides[0];
-        img.decode?.().catch(() => undefined);
-      });
-    const t = window.setTimeout(() => (idle ? idle(run, { timeout: 4000 }) : run()), 2500);
-    return () => clearTimeout(t);
-  }, [loading]);
-
   const station = telemetry.activeStation;
   const activeProject = station && station !== 'space' ? PROJECTS[station as ProjectId] : null;
   const showFinale = station === 'space';
