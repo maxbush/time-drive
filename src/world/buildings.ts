@@ -727,12 +727,13 @@ function buildAct1SignsAndGantries(b: ArchitectureBuilder) {
     const nx = Math.sin(rotY);
     const nz = Math.cos(rotY);
 
-    b.addRoundedSlab('lightConcrete', sx, 0.17, z, 9.6, 2.2, 0.45, 0.8, rotY);
-    b.addBox('blackSteel', sx - Math.cos(rotY) * 3.4, 3.6, z + Math.sin(rotY) * 3.4, 0.28, 6.8, 0.28, rotY);
-    b.addBox('blackSteel', sx + Math.cos(rotY) * 3.4, 3.6, z - Math.sin(rotY) * 3.4, 0.28, 6.8, 0.28, rotY);
-    b.addBox('darkBronze', sx, 4.6, z, 9.2, 4.6, 0.36, rotY);
-    b.addBox('hdrWarmGlow', sx, 6.98, z, 8.8, 0.12, 0.44, rotY);
-    b.addPastRoadSign(sx + nx * 0.22, 4.6, z + nz * 0.22, rotY, 8.8, 4.4, crossedOut);
+    // (the board is about 25% larger than before: the "end of the past" sign is the cue for the jump)
+    b.addRoundedSlab('lightConcrete', sx, 0.17, z, 11.8, 2.4, 0.45, 0.8, rotY);
+    b.addBox('blackSteel', sx - Math.cos(rotY) * 4.3, 3.8, z + Math.sin(rotY) * 4.3, 0.3, 7.6, 0.3, rotY);
+    b.addBox('blackSteel', sx + Math.cos(rotY) * 4.3, 3.8, z - Math.sin(rotY) * 4.3, 0.3, 7.6, 0.3, rotY);
+    b.addBox('darkBronze', sx, 5.2, z, 11.5, 5.75, 0.38, rotY);
+    b.addBox('hdrWarmGlow', sx, 8.14, z, 11.0, 0.14, 0.46, rotY);
+    b.addPastRoadSign(sx + nx * 0.22, 5.2, z + nz * 0.22, rotY, 11.0, 5.5, crossedOut);
   };
 
   // WELCOME TO THE PAST gantry removed — nobody has time to read it mid-drive

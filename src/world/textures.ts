@@ -747,35 +747,35 @@ export function createPastRoadSignTexture(crossedOut: boolean, anisotropy = 8): 
     ctx.font = '500 24px "Inter", sans-serif';
     ctx.fillText('ACCELERATE TO 88 MPH FOR TEMPORAL JUMP ↑', w / 2, 418);
   } else {
-    // European "end of zone" sign: thick red band across the word + a thin
-    // parallel echo — reads as "past cancelled" even at 40 m/s glance.
-    ctx.fillStyle = '#94a3b8';
-    ctx.font = '700 26px "Inter", monospace';
-    ctx.fillText('YOU ARE NOW LEAVING', w / 2, 88);
+    // "End of zone" sign. The word stays readable: one slim red strike confined to the word
+    // (a thick band used to hide half of it), and the rest of the sign is bigger and brighter.
+    ctx.save();
+    ctx.strokeStyle = 'rgba(239,68,68,0.9)';
+    ctx.lineWidth = 7;
+    ctx.strokeRect(28, 28, w - 56, h - 56); // red frame: reads as "stop / ended" from far away
+    ctx.restore();
 
-    ctx.fillStyle = '#e2e8f0';
-    ctx.font = '900 118px "Inter", sans-serif';
-    ctx.fillText('THE PAST', w / 2, 228);
+    ctx.fillStyle = '#cbd5e1';
+    ctx.font = '700 32px "Inter", monospace';
+    ctx.fillText('YOU ARE NOW LEAVING', w / 2, 92);
+
+    ctx.fillStyle = '#f8fafc';
+    ctx.font = '900 138px "Inter", sans-serif';
+    ctx.fillText('THE PAST', w / 2, 232);
 
     ctx.save();
     ctx.strokeStyle = '#ef4444';
-    ctx.lineCap = 'round';
-    ctx.lineWidth = 34;
+    ctx.lineCap = 'butt';
+    ctx.lineWidth = 11;
     ctx.beginPath();
-    ctx.moveTo(172, 318);
-    ctx.lineTo(852, 132);
-    ctx.stroke();
-    ctx.strokeStyle = 'rgba(239,68,68,0.5)';
-    ctx.lineWidth = 10;
-    ctx.beginPath();
-    ctx.moveTo(172, 348);
-    ctx.lineTo(852, 162);
+    ctx.moveTo(176, 300);
+    ctx.lineTo(848, 162);
     ctx.stroke();
     ctx.restore();
 
-    ctx.fillStyle = '#38bdf8';
-    ctx.font = '800 34px "Inter", monospace';
-    ctx.fillText('NEXT EXIT → THE PRESENT', w / 2, 400);
+    ctx.fillStyle = '#7dd3fc';
+    ctx.font = '800 42px "Inter", monospace';
+    ctx.fillText('NEXT EXIT → THE PRESENT', w / 2, 398);
   }
 
   const tex = new THREE.CanvasTexture(c);

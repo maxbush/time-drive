@@ -9,12 +9,12 @@ const link =
 export function FinalePanel({ onRestart }: { onRestart: () => void }) {
   return (
     <>
-      <section className="card-in pointer-events-none fixed left-4 top-[20%] z-20 w-[min(560px,46vw)] sm:left-8 short:top-[14%]">
+      <section className="card-in pointer-events-none fixed left-4 top-[18%] z-20 w-fit max-w-[min(600px,48vw)] rounded-xl bg-[#050a14]/50 px-6 py-5 sm:left-8 sm:px-7 short:top-[12%] short:px-4 short:py-3">
         <div className="flex items-center gap-3 font-mono text-[10px] uppercase tracking-[0.3em] text-sky-300">
           <span>Акт III</span>
           <span className="h-px w-10 bg-sky-300/50" />
         </div>
-        <h2 className="mt-3 text-[30px] font-extralight leading-[1.04] tracking-tight text-white drop-shadow-[0_2px_28px_rgba(0,0,0,0.7)] sm:text-[54px] short:mt-1.5 short:text-[26px]">
+        <h2 className="mt-3 text-[30px] font-extralight leading-[1.04] tracking-tight text-white drop-shadow-[0_2px_28px_rgba(0,0,0,0.7)] sm:text-[46px] short:mt-1.5 short:text-[26px]">
           {FINALE.slogan}
         </h2>
         <p className="mt-3 max-w-md text-sm font-light leading-relaxed text-slate-200 drop-shadow-[0_1px_12px_rgba(0,0,0,0.8)] short:mt-1.5 short:hidden">
