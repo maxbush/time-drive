@@ -1180,10 +1180,13 @@ function buildCluster3TendersAndContinuum(b: ArchitectureBuilder, treePlacements
   });
 }
 
-export function buildWorldArchitecture(
+// Async only so that `pause` can hand control back to the browser between the pieces (the loading
+// screen keeps moving while the city is generated).
+export async function buildWorldArchitecture(
   palette: MaterialPalette,
-  maxAnisotropy: number
-): { group: THREE.Group; lightAnchors: LightAnchor[]; treePlacements: TreePlacement[] } {
+  maxAnisotropy: number,
+  pause: () => Promise<void> = async () => {}
+): Promise<{ group: THREE.Group; lightAnchors: LightAnchor[]; treePlacements: TreePlacement[] }> {
   const builder = new ArchitectureBuilder(maxAnisotropy);
   const treePlacements: TreePlacement[] = [];
 
@@ -1560,16 +1563,22 @@ export function buildWorldArchitecture(
 
   for (const spec of act1Buildings) {
     buildAuthoredBuilding(builder, spec);
+    await pause();
   }
 
   buildBladeSigns(builder);
   buildStreetWires(builder);
+  await pause();
 
   buildAct1SignsAndGantries(builder);
   buildRibbedGateVault(builder);
+  await pause();
   buildCluster1WebArchitecture(builder, treePlacements);
+  await pause();
   buildCluster2AlbionAndSpindle(builder, treePlacements);
+  await pause();
   buildCluster3TendersAndContinuum(builder, treePlacements);
+  await pause();
 
   return {
     group: builder.buildGroup(palette),

@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { OWNER, UI } from '../content';
 
-// Full-screen loading screen as a speedometer: the needle climbs 0 -> 88 MPH while the assets
-// load. While the page loads, the main thread is repeatedly blocked (decoding the car, building
-// the city, compiling shaders), so everything that has to keep moving is a CSS transform /
-// opacity animation: those run on the compositor and do not freeze with JavaScript. That is the
-// idling needle, the scrolling road dashes, the drifting grid and the pulsing glow. Only the
-// number and the arc are updated from JS (10 times a second, smoothed toward real progress).
+// Full-screen loading screen as a speedometer: the needle climbs 0 -> 88 MPH while the world
+// loads. The engine builds the world in short steps (see WorldSceneEngine.build), so JavaScript
+// gets to run every frame: the needle, the arc, the number and the progress line are all driven by
+// one requestAnimationFrame loop that eases a single virtual speed (time-based, so it is smooth at
+// any frame rate and never goes backwards). The virtual speed climbs by itself towards 85 and is
+// pushed further by the real progress. The idle needle shake and the glow are CSS animations on
+// the compositor, so they keep going even through the occasional heavy step.
 export function Loader({ visible, pct, onSimple }: { visible: boolean; pct: number; onSimple?: () => void }) {
   // After a while on a slow device offer the plain version instead of making people wait
   const [slow, setSlow] = useState(false);
@@ -15,32 +16,63 @@ export function Loader({ visible, pct, onSimple }: { visible: boolean; pct: numb
     const t = window.setTimeout(() => setSlow(true), 9000);
     return () => window.clearTimeout(t);
   }, [visible]);
-  const [speed, setSpeed] = useState(0);
-  const speedRef = useRef(0);
   const pctRef = useRef(pct);
   pctRef.current = pct;
+  const needleRef = useRef<HTMLDivElement>(null);
+  const arcRef = useRef<SVGPathElement>(null);
+  const numRef = useRef<SVGTextElement>(null);
+  const barRef = useRef<HTMLDivElement>(null);
   const [gone, setGone] = useState(false);
+
+  // Dial geometry: 240 deg sweep, from -120 to +120.
+  const arcR = 80;
+  const arcLen = Math.PI * arcR * (240 / 180);
 
   useEffect(() => {
     if (!visible) return;
     const t0 = performance.now();
-    const id = window.setInterval(() => {
-      // The needle climbs by itself towards 85 mph (ease-out, ~10 s to be near it), so it never
-      // hangs near zero while the real loading is slow or stuck in a heavy step; the real
-      // progress can only push it further (to 88 once everything has loaded).
-      const t = (performance.now() - t0) / 1000;
-      const base = 85 * (1 - Math.exp(-t / 3.5));
+    let last = t0;
+    let speed = 0;
+    let shown = -1;
+    let raf = 0;
+    const apply = (s: number) => {
+      const f = s / 88;
+      if (needleRef.current) needleRef.current.style.transform = 'rotate(' + (-120 + f * 240).toFixed(2) + 'deg)';
+      arcRef.current?.setAttribute('stroke-dasharray', (f * arcLen).toFixed(1) + ' ' + arcLen.toFixed(1));
+      if (barRef.current) barRef.current.style.transform = 'scaleX(' + f.toFixed(4) + ')';
+      const n = Math.round(s);
+      if (n !== shown && numRef.current) {
+        shown = n;
+        numRef.current.textContent = String(n);
+      }
+    };
+    const tick = (now: number) => {
+      const dt = Math.min(0.25, (now - last) / 1000);
+      last = now;
+      // climbs by itself towards 85 mph (ease-out), so it never hangs near zero while the real
+      // loading sits in a heavy step; the real progress can only push it further, to 88 at the end
+      const t = (now - t0) / 1000;
+      const base = 85 * (1 - Math.exp(-t / 6.5)); // ~45 mph at 4.5 s, ~70 at 12 s: no long wait at the top
       const p = pctRef.current;
-      const real = p >= 100 ? 88 : Math.min(85, p * 0.85);
+      const real = p >= 100 ? 88 : Math.min(85, p * 0.88);
       const target = Math.max(base, real);
-      const cur = speedRef.current;
-      let next = cur + (target - cur) * 0.18;
-      if (target - next < 0.1) next = target;
-      speedRef.current = next;
-      setSpeed((s) => (Math.abs(s - next) < 0.05 ? s : next));
-    }, 100);
-    return () => window.clearInterval(id);
-  }, [visible]);
+      if (target > speed) speed += (target - speed) * (1 - Math.exp(-dt * 5)); // never goes back
+      apply(speed);
+      raf = requestAnimationFrame(tick);
+    };
+    apply(0);
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [visible, arcLen]);
+
+  // loaded: the dial shows the full 88 while the layer fades out
+  useEffect(() => {
+    if (visible) return;
+    if (needleRef.current) needleRef.current.style.transform = 'rotate(120deg)';
+    arcRef.current?.setAttribute('stroke-dasharray', arcLen.toFixed(1) + ' ' + arcLen.toFixed(1));
+    if (barRef.current) barRef.current.style.transform = 'scaleX(1)';
+    if (numRef.current) numRef.current.textContent = '88';
+  }, [visible, arcLen]);
 
   // remove the layer completely once it has faded out
   useEffect(() => {
@@ -50,14 +82,10 @@ export function Loader({ visible, pct, onSimple }: { visible: boolean; pct: numb
   }, [visible]);
   if (gone) return null;
 
-  // Dial geometry: 240 deg sweep, from -120 to +120.
-  const needleAngle = -120 + (speed / 88) * 240;
-  const arcR = 80;
   // arc from the lower left over the top to the lower right (240 deg), centre (100, 92)
   const arcStart = { x: 100 - arcR * Math.cos(Math.PI / 6), y: 92 + arcR * Math.sin(Math.PI / 6) };
   const arcEnd = { x: 100 + arcR * Math.cos(Math.PI / 6), y: arcStart.y };
   const arcD = `M ${arcStart.x} ${arcStart.y} A ${arcR} ${arcR} 0 1 1 ${arcEnd.x} ${arcEnd.y}`;
-  const arcLen = Math.PI * arcR * (240 / 180);
 
   return (
     <div
@@ -117,12 +145,13 @@ export function Loader({ visible, pct, onSimple }: { visible: boolean; pct: numb
               strokeWidth="3"
             />
             <path
+              ref={arcRef}
               d={arcD}
               fill="none"
               stroke="url(#speedGrad)"
               strokeWidth="3"
               strokeLinecap="round"
-              strokeDasharray={`${(speed / 88) * arcLen} ${arcLen}`}
+              strokeDasharray={`0 ${arcLen}`}
             />
             <defs>
               <linearGradient id="speedGrad" x1="0" y1="0" x2="1" y2="0">
@@ -131,8 +160,17 @@ export function Loader({ visible, pct, onSimple }: { visible: boolean; pct: numb
                 <stop offset="100%" stopColor="#f59e0b" />
               </linearGradient>
             </defs>
-            <text x="100" y="128" textAnchor="middle" fill="#f8fafc" fontSize="22" fontFamily="monospace" fontWeight="700">
-              {Math.round(speed)}
+            <text
+              ref={numRef}
+              x="100"
+              y="128"
+              textAnchor="middle"
+              fill="#f8fafc"
+              fontSize="22"
+              fontFamily="monospace"
+              fontWeight="700"
+            >
+              0
             </text>
             <text
               x="100"
@@ -149,7 +187,7 @@ export function Loader({ visible, pct, onSimple }: { visible: boolean; pct: numb
 
           {/* needle: HTML so its rotation + idle shake run on the compositor */}
           <div className="absolute" style={{ left: '50%', top: '61.333%' }}>
-            <div style={{ transform: `rotate(${needleAngle}deg)`, transition: 'transform 0.4s linear' }}>
+            <div ref={needleRef} style={{ transform: 'rotate(-120deg)' }}>
               <div className="needle-idle">
                 <div
                   className="absolute h-[5.9rem] rounded-full bg-amber-500 sm:h-[7.87rem]"
@@ -164,19 +202,20 @@ export function Loader({ visible, pct, onSimple }: { visible: boolean; pct: numb
           </div>
         </div>
 
-        {/* road dashes flying past: never stops, whatever the page is doing */}
-        <div className="relative mt-5 h-[3px] w-72 overflow-hidden sm:w-96" aria-hidden="true">
+        {/* progress line: the same eased value as the needle, drawn with a transform (no layout) */}
+        <div className="relative mt-5 h-[3px] w-72 overflow-hidden rounded-full bg-white/10 sm:w-96" aria-hidden="true">
           <div
-            className="loader-road absolute inset-y-0 left-0"
+            ref={barRef}
+            className="absolute inset-0 origin-left rounded-full"
             style={{
-              width: 'calc(100% + 46px)',
-              backgroundImage: 'repeating-linear-gradient(90deg, rgba(245,158,11,0.75) 0 24px, transparent 24px 46px)',
+              transform: 'scaleX(0)',
+              background: 'linear-gradient(90deg, #38bdf8, #f8fafc 70%, #f59e0b)',
             }}
           />
         </div>
 
         <div className="mt-4 flex items-center gap-1 font-mono text-[10px] uppercase tracking-[0.25em] text-slate-500">
-          <span>{pct >= 100 ? UI.stageWarm : UI.stageCar}</span>
+          <span>{pct >= 90 ? UI.stageWarm : UI.stageCar}</span>
           <span>...</span>
         </div>
         {slow && onSimple && (

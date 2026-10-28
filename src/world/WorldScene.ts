@@ -195,16 +195,16 @@ export class WorldSceneEngine {
   private renderer: THREE.WebGLRenderer;
   private scene: THREE.Scene;
   private camera: THREE.PerspectiveCamera;
-  private composer: EffectComposer;
-  private bloomPass: UnrealBloomPass;
+  private composer!: EffectComposer;
+  private bloomPass!: UnrealBloomPass;
   private bloomBase = 0.28;
   private baseFov = 50;
   private trans = new TransitionDirector();
   private transPass!: ShaderPass;
   private fireTrails!: FireTrails;
 
-  private reflectRT: THREE.WebGLRenderTarget;
-  private reflectCam: THREE.PerspectiveCamera;
+  private reflectRT!: THREE.WebGLRenderTarget;
+  private reflectCam!: THREE.PerspectiveCamera;
   private reflectMatrix = new THREE.Matrix4();
   private biasMatrix = new THREE.Matrix4().set(
     0.5, 0.0, 0.0, 0.5,
@@ -214,11 +214,11 @@ export class WorldSceneEngine {
   );
   private reflectionClipPlane = [new THREE.Plane(new THREE.Vector3(0, 1, 0), -0.02)];
 
-  private envSystem: EnvironmentSystem;
-  private avenue: AvenueSystem;
+  private envSystem!: EnvironmentSystem;
+  private avenue!: AvenueSystem;
   private archGroup!: THREE.Group;
-  private vehicle: VehicleController;
-  private spaceCosmos: SpaceCosmosSystem;
+  private vehicle!: VehicleController;
+  private spaceCosmos!: SpaceCosmosSystem;
 
   private allLightAnchors: LightAnchor[] = [];
   private dynamicLightPool: THREE.PointLight[] = [];
@@ -287,6 +287,8 @@ export class WorldSceneEngine {
   private sharpFixed = false;
   private sharpCur = 0.12;
   private treeLod: TreeLod | null = null; // full trees near the car, cheap ones far away
+  private compileRT: THREE.WebGLRenderTarget | null = null;
+  private live = false; // set once everything is loaded, compiled and warmed up
   private weak = false; // integrated / software GPU: lighter profile from the first frame
   private reflScale = 0.5; // planar reflection target size relative to the screen
   private smaaPass: SMAAPass | null = null;
@@ -407,8 +409,53 @@ export class WorldSceneEngine {
     this.camera = new THREE.PerspectiveCamera(50, width / height, 0.35, 2200);
     this.camera.layers.enable(1); // layer 1: visible in main cam, excluded from planar reflection
 
-    const texLib = createTextureLibrary(this.renderer, this.weak ? 8 : 16);
+    // The heavy part (textures, city, composer) runs as a chain of steps with a pause for the
+    // browser between them: the loading screen keeps animating and its progress moves, instead of
+    // the page freezing for several seconds in one block.
+    this.ready = this.build(params, qParam, width, height, pixelRatio, onProgress);
+  }
+
+  /** One pause for the browser to paint and handle input (a hidden tab falls back to a timer). */
+  private static breathe() {
+    return new Promise<void>((resolve) => {
+      let done = false;
+      const fin = () => {
+        if (!done) {
+          done = true;
+          resolve();
+        }
+      };
+      requestAnimationFrame(() => setTimeout(fin, 0));
+      setTimeout(fin, 120);
+    });
+  }
+
+  private async build(
+    params: URLSearchParams,
+    qParam: string | null,
+    width: number,
+    height: number,
+    pixelRatio: number,
+    onProgress?: (fraction: number) => void
+  ): Promise<void> {
+    const container = this.container;
+    // overall progress: building the world is the first third, the downloads the rest
+    let buildFrac = 0;
+    let carFrac = 0;
+    let treeFrac = 0;
+    const report = () =>
+      onProgress?.(Math.min(0.92, buildFrac * 0.3 + (carFrac * 0.72 + treeFrac * 0.28) * 0.62));
+    const step = async (f: number) => {
+      buildFrac = f;
+      report();
+      await WorldSceneEngine.breathe();
+    };
+
+    const texLib = await createTextureLibrary(this.renderer, this.weak ? 8 : 16, () => WorldSceneEngine.breathe());
+    if (this.disposed) return;
     const palette = createMaterialPalette(texLib, { mobile: this.mobile });
+    await step(0.15);
+    if (this.disposed) return;
 
     this.envSystem = createEnvironment(this.renderer, this.scene, palette, { weak: this.weak });
     if (this.mobile) {
@@ -418,20 +465,46 @@ export class WorldSceneEngine {
         if (l.isDirectionalLight) l.castShadow = false;
       });
     }
+    await step(0.3);
+    if (this.disposed) return;
     this.avenue = buildGrandAvenue(palette);
     this.scene.add(this.avenue.group);
+    await step(0.55);
+    if (this.disposed) return;
 
-    const archResult = buildWorldArchitecture(palette, texLib.maxAnisotropy);
+    // Everything that decides a shader's variant (the light set above all) exists from here on:
+    // the Act III cosmos, the light pool, the car (its GLB starts downloading) and the fire trails.
+    this.spaceCosmos = createSpaceCosmos(this.scene);
+    for (let i = 0; i < this.LIGHT_POOL_SIZE; i++) {
+      const pl = new THREE.PointLight(0xffd89e, 0, 32, 1.65);
+      this.scene.add(pl);
+      this.dynamicLightPool.push(pl);
+    }
+    this.vehicle = createVehicleController(
+      this.scene,
+      (f) => {
+        carFrac = f;
+        report();
+      },
+      this.renderer, { mobile: this.mobile, weak: this.weak });
+    this.fireTrails = createFireTrails(this.scene);
+    // The shader compiler runs in the GPU process: start it now on everything that exists, and let
+    // it work in parallel with the generation of the city on this thread (the passes further down
+    // only have what is new to do).
+    const params0 = new URLSearchParams(window.location.search);
+    const compileA = params0.has('noasync') ? Promise.resolve() : this.precompileAsync();
+
+    const archResult = await buildWorldArchitecture(palette, texLib.maxAnisotropy, () => WorldSceneEngine.breathe());
+    if (this.disposed) return;
     this.archGroup = archResult.group;
     this.scene.add(this.archGroup);
+    await step(0.75);
+    if (this.disposed) return;
 
     // Load real 3D elm trees (`tree_elm.glb`) onto sidewalk planter islands, park mounds & Confluence terraces!
     const allTrees = [...this.avenue.treePlacements, ...archResult.treePlacements];
     // Phones: every other tree (each is ~38k triangles)
     // Loading bar: the car GLB is ~70% of the bytes, the trees ~30%
-    let carFrac = 0;
-    let treeFrac = 0;
-    const report = () => onProgress?.(Math.min(1, carFrac * 0.72 + treeFrac * 0.28));
     const treesReady = loadAndPlaceElmTrees(
       this.scene,
       this.mobile || this.weak ? allTrees.filter((_, i) => i % 2 === 0) : allTrees,
@@ -449,35 +522,13 @@ export class WorldSceneEngine {
       this.treeLod = lod;
     });
 
-    // Build Act III Space Cosmos & Starfield Warp
-    this.spaceCosmos = createSpaceCosmos(this.scene);
-
     this.allLightAnchors = [...this.avenue.lightAnchors, ...archResult.lightAnchors];
-    for (let i = 0; i < this.LIGHT_POOL_SIZE; i++) {
-      const pl = new THREE.PointLight(0xffd89e, 0, 32, 1.65);
-      this.scene.add(pl);
-      this.dynamicLightPool.push(pl);
-    }
-
-    this.vehicle = createVehicleController(
-      this.scene,
-      (f) => {
-        carFrac = f;
-        report();
-      },
-      this.renderer, { mobile: this.mobile, weak: this.weak });
-    this.fireTrails = createFireTrails(this.scene);
-    // Loading screen waits for the car AND the tree GLB; tree shaders get a
-    // second compile so they never stutter on first appearance.
-    const params0 = new URLSearchParams(window.location.search);
-    this.ready = Promise.all([this.vehicle.ready, treesReady]).then(async () => {
-      // Let the loader paint 100%, compile every shader in parallel (the page stays alive), and
-      // only then do the one forced full frame, which now finds everything ready.
-      await new Promise<void>((r) => requestAnimationFrame(() => setTimeout(r, 30)));
-      if (!params0.has('noasync')) await this.precompileAsync();
-      await new Promise<void>((r) => requestAnimationFrame(() => r()));
-      this.warmUp();
-    });
+    // Loading screen waits for the car AND the tree GLB.
+    const assetsReady = Promise.all([this.vehicle.ready, treesReady]);
+    await step(0.9);
+    if (this.disposed) return;
+    // Second compile pass: whatever the first one could not see yet (the city, the late arrivals).
+    const compileB = params0.has('noasync') ? Promise.resolve() : this.precompileAsync();
 
     // Cheap planar reflection: sprites, particles & micro-props stay on layer 1
     // (main camera sees them, reflection camera does not).
@@ -618,6 +669,24 @@ export class WorldSceneEngine {
 
     this.lastPerfTime = performance.now();
     this.animate(palette);
+    // the window may have been resized while the world was being built
+    if (container.clientWidth !== width || container.clientHeight !== height) this.handleResize();
+    buildFrac = 1;
+    report();
+
+    // The downloads finish (they ran alongside the build), then every shader is compiled in
+    // parallel (the page stays alive) and only then the one forced full frame, which now finds
+    // everything ready.
+    await Promise.all([compileA, compileB]);
+    await assetsReady;
+    if (this.disposed) return;
+    await new Promise<void>((r) => requestAnimationFrame(() => setTimeout(r, 30)));
+    if (!params0.has('noasync')) await this.precompileAsync();
+    if (this.disposed) return;
+    await new Promise<void>((r) => requestAnimationFrame(() => r()));
+    this.warmUp();
+    this.live = true; // from now on the frame loop renders
+    onProgress?.(1);
   }
 
   /** Pause/resume the whole simulation + rendering (e.g. while asking to rotate a phone).
@@ -943,7 +1012,9 @@ export class WorldSceneEngine {
     this.animFrameId = requestAnimationFrame(() => this.animate(palette));
 
     const now = performance.now();
-    if (this.paused) {
+    if (this.paused || !this.live) {
+      // (not live yet = still loading: nothing is rendered behind the loader. Rendering early made
+      // the first frames compile every shader one by one on the main thread - a frozen loader.)
       this.lastPerfTime = now; // no giant dt when we resume
       return;
     }
@@ -1415,19 +1486,51 @@ export class WorldSceneEngine {
   }
 
   private async precompileAsync() {
-    const groups = [this.avenue.group, this.archGroup, this.spaceCosmos.group];
+    // (the city may not exist yet when the first pass starts)
+    const groups = [this.avenue.group, this.archGroup, this.spaceCosmos.group].filter(Boolean);
     const prev = groups.map((g) => g.visible);
     groups.forEach((g) => (g.visible = true));
     const hideAgain = this.forceShowHidden();
+    // A program is specific to the render target it draws into (tone mapping and the output colour
+    // space are part of its key): the scene is drawn into the composer's float target, so compile
+    // with that target bound - compiling for the screen produced programs that were never used.
+    const prevRT = this.renderer.getRenderTarget();
+    // (a 1x1 target of the same type is enough: it can be called before the composer exists)
+    const keyRT = this.compileRT ?? (this.compileRT = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType }));
+    this.renderer.setRenderTarget(keyRT);
     let p: Promise<unknown>;
     try {
       p = this.renderer.compileAsync(this.scene, this.camera).catch(() => undefined);
     } catch {
       p = Promise.resolve();
     }
+    this.renderer.setRenderTarget(prevRT);
     hideAgain();
     groups.forEach((g, i) => (g.visible = prev[i])); // the collecting part of the call is synchronous
     await p;
+
+    // The planar reflection renders the same materials with a clipping plane: that is a second
+    // set of shader programs. Compile them in parallel too, otherwise the first reflection frame
+    // compiles ~100 programs one by one, right on the main thread.
+    if (!this.reflectionDisabled && !this.mobile) {
+      this.renderer.clippingPlanes = this.reflectionClipPlane;
+      const rt2 = this.renderer.getRenderTarget();
+      this.renderer.setRenderTarget(keyRT);
+      // compile() does not read renderer.clippingPlanes by itself: they only reach the shader key
+      // through a render() call. An empty-scene render (draws nothing) makes three register the
+      // plane, so the programs compiled next are the clipped variants the reflection really uses.
+      this.renderer.render(new THREE.Scene(), this.camera);
+      let p2: Promise<unknown>;
+      try {
+        p2 = this.renderer.compileAsync(this.scene, this.camera).catch(() => undefined);
+      } catch {
+        p2 = Promise.resolve();
+      }
+      this.renderer.setRenderTarget(rt2);
+      this.renderer.clippingPlanes = [];
+      this.renderer.render(new THREE.Scene(), this.camera); // register "no planes" again
+      await p2;
+    }
   }
 
   private warmUp() {
@@ -1581,8 +1684,9 @@ export class WorldSceneEngine {
     window.removeEventListener('pointermove', this.handlePointerMove);
     window.removeEventListener('pointerup', this.handlePointerUp);
     window.removeEventListener('pointercancel', this.handlePointerUp);
-    this.reflectRT.dispose();
-    this.composer.dispose();
+    this.compileRT?.dispose();
+    this.reflectRT?.dispose(); // (undefined if disposed while still being built)
+    this.composer?.dispose();
     this.renderer.dispose();
     if (this.renderer.domElement.parentNode === this.container) {
       this.container.removeChild(this.renderer.domElement);

@@ -40,9 +40,12 @@ function seoPlugin(): Plugin {
         sameAs: [`https://t.me/${CONTACT.telegramUser}`],
         knowsAbout: ['Веб-разработка', 'SEO', 'Telegram-боты', 'Автоматизация', 'Аналитика данных'],
       };
+      // the links of the hidden copy stay readable for crawlers and screen readers, but are out of the
+      // keyboard focus order (an invisible focused link that Enter takes you away with is a trap)
+      const staticContent = content.replace(/<a /g, '<a tabindex="-1" ');
       return html
         .replace('<!--FONT_PRELOAD-->', fonts)
-        .replace('<!--STATIC_CONTENT-->', content)
+        .replace('<!--STATIC_CONTENT-->', staticContent)
         .replace('<!--JSON_LD-->', `<script type="application/ld+json">${JSON.stringify(ld)}</script>`);
     },
   };

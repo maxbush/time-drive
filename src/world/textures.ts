@@ -867,10 +867,17 @@ export function createShowcaseScreenTexture(
   return tex;
 }
 
-export function createTextureLibrary(renderer: THREE.WebGLRenderer, maxAniso = 16): TextureLibrary {
+// Generating the procedural textures takes a couple of seconds of pure CPU work; `pause` lets the
+// caller hand control back to the browser between the sets (loading screen keeps moving).
+export async function createTextureLibrary(
+  renderer: THREE.WebGLRenderer,
+  maxAniso = 16,
+  pause: () => Promise<void> = async () => {}
+): Promise<TextureLibrary> {
   const maxAnisotropy = Math.min(maxAniso, renderer.capabilities.getMaxAnisotropy());
 
   const asphalt = buildAsphaltSet(maxAnisotropy);
+  await pause();
   const sidewalk = buildStoneOrBrickSet(
     {
       w: 512,
@@ -889,6 +896,7 @@ export function createTextureLibrary(renderer: THREE.WebGLRenderer, maxAniso = 1
     },
     maxAnisotropy
   );
+  await pause();
 
   const basaltStrip = buildStoneOrBrickSet(
     {
@@ -908,6 +916,7 @@ export function createTextureLibrary(renderer: THREE.WebGLRenderer, maxAniso = 1
     },
     maxAnisotropy
   );
+  await pause();
 
   const curbGranite = buildStoneOrBrickSet(
     {
@@ -927,6 +936,7 @@ export function createTextureLibrary(renderer: THREE.WebGLRenderer, maxAniso = 1
     },
     maxAnisotropy
   );
+  await pause();
 
   const limestone = buildStoneOrBrickSet(
     {
@@ -946,6 +956,7 @@ export function createTextureLibrary(renderer: THREE.WebGLRenderer, maxAniso = 1
     },
     maxAnisotropy
   );
+  await pause();
 
   const warmStone = buildStoneOrBrickSet(
     {
@@ -965,6 +976,7 @@ export function createTextureLibrary(renderer: THREE.WebGLRenderer, maxAniso = 1
     },
     maxAnisotropy
   );
+  await pause();
 
   const darkBrick = buildStoneOrBrickSet(
     {
@@ -984,6 +996,7 @@ export function createTextureLibrary(renderer: THREE.WebGLRenderer, maxAniso = 1
     },
     maxAnisotropy
   );
+  await pause();
 
   const warmBrick = buildStoneOrBrickSet(
     {
@@ -1003,8 +1016,10 @@ export function createTextureLibrary(renderer: THREE.WebGLRenderer, maxAniso = 1
     },
     maxAnisotropy
   );
+  await pause();
 
   const flutedConcrete = buildFlutedConcreteSet(maxAnisotropy);
+  await pause();
 
   const architecturalConcrete = buildStoneOrBrickSet(
     {
@@ -1024,6 +1039,7 @@ export function createTextureLibrary(renderer: THREE.WebGLRenderer, maxAniso = 1
     },
     maxAnisotropy
   );
+  await pause();
 
   const grassTurf = buildStoneOrBrickSet(
     {
@@ -1043,6 +1059,7 @@ export function createTextureLibrary(renderer: THREE.WebGLRenderer, maxAniso = 1
     },
     maxAnisotropy
   );
+  await pause();
 
   return {
     asphalt,
