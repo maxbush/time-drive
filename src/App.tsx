@@ -286,7 +286,9 @@ export default function App() {
       <div
         ref={containerRef}
         className="h-full w-full cursor-grab active:cursor-grabbing"
-        style={{ touchAction: 'none' }} // the world handles drag and pinch itself
+        // the world handles drag and pinch itself; while a live site covers the screen the (paused)
+        // canvas is not even composited, so the browser's graphics work all goes to the site
+        style={{ touchAction: 'none', visibility: liveView ? 'hidden' : 'visible' }}
       />
 
       {/* Cinematic vignette — pure CSS, zero GL cost */}
