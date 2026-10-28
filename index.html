@@ -3,16 +3,69 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>TIME DRIVE — Максим Бушенко</title>
+    <title>Максим Бушенко: сайты, боты и автоматизация | TIME DRIVE</title>
+    <meta name="description" content="Портфолио Максима Бушенко: дизайн и разработка сайтов, SEO, Telegram- и WhatsApp-боты, автоматизация. Интерактивное 3D-путешествие по проектам." />
+    <meta name="theme-color" content="#05070b" />
+    <meta name="author" content="Максим Бушенко" />
+    <link rel="canonical" href="https://maxbush.github.io/time-drive/" />
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <link rel="icon" type="image/x-icon" href="./favicon.ico" sizes="32x32" />
+    <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
+    <!-- Link previews (Telegram, LinkedIn, messengers) -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="TIME DRIVE" />
+    <meta property="og:locale" content="ru_RU" />
+    <meta property="og:title" content="Максим Бушенко: сайты, боты и автоматизация" />
+    <meta property="og:description" content="Проедьте на DeLorean через четыре последних проекта: сайты, боты и аналитика. Дизайн и разработка в одних руках." />
+    <meta property="og:url" content="https://maxbush.github.io/time-drive/" />
+    <meta property="og:image" content="https://maxbush.github.io/time-drive/og.jpg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Максим Бушенко: сайты, боты и автоматизация" />
+    <meta name="twitter:description" content="Проедьте на DeLorean через четыре последних проекта: сайты, боты и аналитика." />
+    <meta name="twitter:image" content="https://maxbush.github.io/time-drive/og.jpg" />
+    <script type="application/ld+json">{"@context":"https://schema.org","@type":"Person","name":"Максим Бушенко","url":"https://maxbush.github.io/time-drive/","jobTitle":"Веб-разработчик, разработка ботов и автоматизации","email":"maxim.bushenko@gmail.com","sameAs":["https://t.me/ktoetopishet"],"knowsAbout":["Веб-разработка","SEO","Telegram-боты","Автоматизация","Аналитика данных"]}</script>
     <!-- start the big downloads right away, in parallel with the JS bundle -->
     <link rel="preload" href="./models/bttf_delorean_mobile.glb" as="fetch" crossorigin="anonymous" />
     <link rel="preload" href="./models/tree_elm.glb" as="fetch" crossorigin="anonymous" />
-    <script type="module" crossorigin src="./assets/index-Bo0tzRWe.js"></script>
-    <link rel="modulepreload" crossorigin href="./assets/three-DfObLnnI.js">
-    <link rel="modulepreload" crossorigin href="./assets/postprocessing-SCI-LZTK.js">
-    <link rel="stylesheet" crossorigin href="./assets/index-Bq-jtJUY.css">
+    <link rel="preload" href="./models/bttf_delorean_shadow_v2.glb" as="fetch" crossorigin="anonymous" />
+    <link rel="preload" href="./assets/inter-cyrillic-wght-normal-DqGufNeO.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="./assets/inter-latin-wght-normal-Dx4kXJAl.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="./assets/jetbrains-mono-cyrillic-500-normal-DmUKJPL_.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="./assets/jetbrains-mono-latin-500-normal-BWZEU5yA.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="./assets/jetbrains-mono-latin-400-normal-V6pRDFza.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="./assets/jetbrains-mono-cyrillic-400-normal-BEIGL1Tu.woff2" as="font" type="font/woff2" crossorigin />
+    <style>
+      /* first paint, before any script: the page is never an empty dark rectangle */
+      html, body { margin: 0; background: #05070b; }
+      #splash {
+        position: fixed; inset: 0; z-index: 1; display: flex; flex-direction: column;
+        align-items: center; justify-content: center; gap: 14px; color: #e2e8f0;
+        font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+      }
+      #splash b { font-size: 11px; letter-spacing: .5em; text-transform: uppercase; color: #fbbf24; font-weight: 600; }
+      #splash span { font-size: 30px; font-weight: 600; letter-spacing: -.01em; color: #fff; }
+      #splash i { display: block; width: 180px; height: 2px; overflow: hidden; background: rgba(255,255,255,.12); position: relative; }
+      #splash i::after { content: ''; position: absolute; inset: 0; width: 40%; background: #f59e0b; animation: splash-run 1.1s ease-in-out infinite; }
+      @keyframes splash-run { from { transform: translateX(-100%); } to { transform: translateX(260%); } }
+      /* crawler / screen-reader copy of the page content (the 3D world itself is a canvas) */
+      .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
+    </style>
+    <script type="module" crossorigin src="./assets/index-Cm2Nzu1q.js"></script>
+    <link rel="modulepreload" crossorigin href="./assets/three-pnRTlPCs.js">
+    <link rel="modulepreload" crossorigin href="./assets/postprocessing-B3B7Og2v.js">
+    <link rel="stylesheet" crossorigin href="./assets/index-CKodJ1u1.css">
   </head>
   <body class="bg-[#05070b] text-white antialiased selection:bg-amber-400/30 overflow-hidden">
+    <main id="static-content" class="sr-only"><h1>Максим Бушенко</h1><p>Разработка · Боты · Автоматизация. Сайты, боты и автоматизация: дизайн и разработка в одних руках.</p><section><h2>Сайты</h2><p>Дизайн и разработка сайтов в одних руках: от макета до публикации. Четыре последних проекта.</p><ul><li><a tabindex="-1" href="https://maxbush.github.io/albion-mockups/albion-v2/ru/">ALBION Consult</a>: Консалтинг · Оксфорд · SEO. Сайт консалтинговой компании из Оксфорда, собранный вместе с SEO-стратегией: маршрут поступления в пять этапов, разделы услуг, гайды, двуязычная структура и анкета консультации.</li><li><a tabindex="-1" href="https://maxbush.github.io/grodno-apart/">Гродно Апарт</a>: Посуточная аренда апартаментов. Каталог дизайнерских апартаментов в центре Гродно: фотографии, описания, удобства и бронирование.</li><li><a tabindex="-1" href="https://maxbush.github.io/lune/">LUNÉ Studio</a>: Креативная студия · Дубай. Сайт продакшн-студии для luxury-брендов: услуги, кампании, студии и интерактивный калькулятор съёмки, где формат, длительность и уровень ретуши сразу дают ориентир по стоимости.</li><li><a tabindex="-1" href="https://eca.by">Евростройарсенал</a>: Корпоративный сайт · огнезащита и теплоизоляция. Сайт компании: направления работ, стандарты и качество, сертификаты, контакты.</li></ul></section><section><h2>ALBION Bot</h2><p>Ассистент координатора репетиторской компании: забирает на себя рутину, которая раньше шла вручную через мессенджеры и таблицы.</p><p>Бот подключён к расписанию MeritHub по API и общается с родителями, репетиторами и координатором в WhatsApp и Telegram. Если ученик не пришёл, родитель сразу получает сообщение с кнопкой «Всё в порядке», а при молчании бот сам поднимает вопрос у координатора. Новые заявки разбирает ИИ, отмены и переносы проходят по сценариям с уведомлением всех участников. События, очередь отложенных уведомлений и журнал хранятся в собственной базе данных.</p><ul><li>Неявка ученика: сообщение родителю с кнопкой подтверждения, при молчании эскалация координатору</li><li>Каналы: WhatsApp и Telegram</li><li>Интеграция с расписанием MeritHub по API</li><li>Заявки: ИИ извлекает из обращения предмет, уровень и цель</li><li>Отмена и перенос занятий с уведомлением репетитора и координатора</li><li>Роли и права: координатор, репетитор, родитель</li><li>Собственная база: отложенные уведомления, журнал, очередь сбойных событий</li></ul></section><section><h2>Тендерная аналитика</h2><p>Система, которая собирает закупки Беларуси и превращает их в приоритетный список возможностей.</p><p>Загружает закупки и планы закупок заказчиков из gias.by в собственную базу данных, находит релевантные позиции по кодам ОКРБ, оценивает участие конкурентов и считает приоритет каждой возможности. С результатом работают в веб-интерфейсе (дашборд на React поверх REST API), в Telegram-боте и в Excel-отчётах для руководителя.</p><ul><li>Импорт закупок и планов закупок из gias.by в собственную базу</li><li>Анализ собственного участия и конкурентов</li><li>Релевантность позиций планов по кодам ОКРБ и ключевым словам</li><li>Расчёт приоритета возможностей</li><li>Веб-интерфейс: дашборд и REST API</li><li>Telegram: профиль поиска и анализ плана заказчика по УНП</li><li>Excel-отчёты: технический, управленческий, по возможностям</li></ul></section><section><h2>Контакты</h2><p><a tabindex="-1" href="https://t.me/ktoetopishet">Telegram @ktoetopishet</a>, <a tabindex="-1" href="mailto:maxim.bushenko@gmail.com">maxim.bushenko@gmail.com</a></p></section></main>
+    <div id="splash" aria-hidden="true"><b>Time Drive</b><span>Максим Бушенко</span><i></i></div>
     <div id="root"></div>
+    <noscript>
+      <div style="position:fixed;inset:0;z-index:5;background:#05070b;color:#e2e8f0;padding:40px;font-family:system-ui,sans-serif">
+        <h1 style="color:#fff">Максим Бушенко</h1>
+        <p>Для интерактивной версии нужен JavaScript. Написать мне: <a style="color:#fbbf24" href="https://t.me/ktoetopishet">Telegram @ktoetopishet</a>, <a style="color:#fbbf24" href="mailto:maxim.bushenko@gmail.com">maxim.bushenko@gmail.com</a>.</p>
+      </div>
+    </noscript>
   </body>
 </html>
