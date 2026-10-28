@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { WORLD_ZONES, WorldSceneEngine, WorldTelemetry } from './world/WorldScene';
-import { CHAPTERS, PROJECTS, ProjectId } from './content';
+import { CHAPTERS, PROJECTS, ProjectId, SITES } from './content';
 import { Loader } from './ui/Loader';
 import { TopBar } from './ui/TopBar';
 import { ChapterBar } from './ui/ChapterBar';
@@ -180,6 +180,23 @@ export default function App() {
   useEffect(() => {
     if (loading) return;
     const t = window.setTimeout(() => setHudIntro(false), 6000);
+    return () => clearTimeout(t);
+  }, [loading]);
+
+  // Decode the site previews while the first street is driven (idle time), so the panel at the
+  // web stop does not have to decode four images the moment it slides in.
+  useEffect(() => {
+    if (loading) return;
+    const idle = (window as unknown as { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number })
+      .requestIdleCallback;
+    const run = () =>
+      SITES.forEach((s) => {
+        const img = new Image();
+        img.decoding = 'async';
+        img.src = s.slides[0];
+        img.decode?.().catch(() => undefined);
+      });
+    const t = window.setTimeout(() => (idle ? idle(run, { timeout: 4000 }) : run()), 2500);
     return () => clearTimeout(t);
   }, [loading]);
 

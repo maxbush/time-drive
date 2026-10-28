@@ -493,7 +493,8 @@ export class WorldSceneEngine {
 
     // Transition post pass (warp blur + chromatic aberration + HDR white-out).
     // Before bloom so the flash blooms; disabled outside transitions.
-    this.transPass = createTransitionPass();
+    // (weaker GPUs: fewer taps in the warp blur - it runs full-screen only during a jump)
+    this.transPass = createTransitionPass(this.weak || this.mobile ? 6 : 10);
     this.composer.addPass(this.transPass);
 
     this.bloomPass = new UnrealBloomPass(
@@ -1155,7 +1156,11 @@ export class WorldSceneEngine {
       const slow = this.currentFps < target * 0.83 && cur > floor;
       const severe = this.currentFps < target * 0.6;
       this.dipStreak = slow ? this.dipStreak + 1 : 0;
+      // never climb to a higher resolution while the jump is approaching / playing: the resize
+      // hitch would land exactly where the frame gets heavier
+      const calm = !this.transPass.enabled && !(zPos < 215 && zPos > 85);
       const headroom =
+        calm &&
         !slow &&
         this.currentFps > target * 0.95 &&
         cur < maxDpr &&
@@ -1316,16 +1321,33 @@ export class WorldSceneEngine {
   // depth) behind the loading screen instead of mid-launch (was 150-530ms).
   // Compiles every material of the whole world (all groups forced visible for the call) with the
   // browser's parallel shader compilation; the main thread keeps running meanwhile.
+  // Objects that are hidden until something happens (the car's glow / arcs / halos of a time jump,
+  // fire, ...) were never compiled or uploaded by the warm-up, so their first appearance - just
+  // before the jump - compiled shaders and uploaded buffers in the middle of the drive (a hitch
+  // that only a first visit with a cold shader cache sees, e.g. on the published site).
+  // Shows them for the warm-up and returns the function that hides them again. Lights are left
+  // alone: toggling one would change the light count and recompile every material.
+  private forceShowHidden(): () => void {
+    const hidden: THREE.Object3D[] = [];
+    this.scene.traverse((o) => {
+      if (o !== this.scene && !o.visible && !(o as THREE.Light).isLight) hidden.push(o);
+    });
+    hidden.forEach((o) => (o.visible = true));
+    return () => hidden.forEach((o) => (o.visible = false));
+  }
+
   private async precompileAsync() {
     const groups = [this.avenue.group, this.archGroup, this.spaceCosmos.group];
     const prev = groups.map((g) => g.visible);
     groups.forEach((g) => (g.visible = true));
+    const hideAgain = this.forceShowHidden();
     let p: Promise<unknown>;
     try {
       p = this.renderer.compileAsync(this.scene, this.camera).catch(() => undefined);
     } catch {
       p = Promise.resolve();
     }
+    hideAgain();
     groups.forEach((g, i) => (g.visible = prev[i])); // the collecting part of the call is synchronous
     await p;
   }
@@ -1337,6 +1359,7 @@ export class WorldSceneEngine {
     this.avenue.group.visible = true;
     this.archGroup.visible = true;
     this.spaceCosmos.group.visible = true;
+    const hideAgain = this.forceShowHidden();
 
     const culled: [THREE.Object3D, boolean][] = [];
     this.scene.traverse((o) => {
@@ -1359,6 +1382,7 @@ export class WorldSceneEngine {
     this.transPass.enabled = false;
 
     for (const [o, v] of culled) o.frustumCulled = v;
+    hideAgain();
     this.avenue.group.visible = prevAvenue;
     this.archGroup.visible = prevArch;
     this.spaceCosmos.group.visible = prevCosmos;

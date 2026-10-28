@@ -186,6 +186,23 @@ function drawMetrics(ctx: Ctx, metrics: string[], accent: string) {
 }
 
 // The finished board as an image (for the HTML panel): drawn on demand at a higher scale.
+// Same, but the (slow) image encoding runs off the main thread: resolves to an object URL.
+export function renderStandImageAsync(opts: StandOptions, scale = 2.4): Promise<string> {
+  const tex = createStandTexture(opts, 1, scale);
+  const canvas = tex.image as HTMLCanvasElement;
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => {
+        tex.dispose();
+        if (blob) resolve(URL.createObjectURL(blob));
+        else reject(new Error('encode failed'));
+      },
+      'image/webp',
+      0.92
+    );
+  });
+}
+
 export function renderStandImage(opts: StandOptions, scale = 2.4): string {
   const tex = createStandTexture(opts, 1, scale);
   const canvas = tex.image as HTMLCanvasElement;

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { ProjectContent, SiteContent, UI } from '../content';
-import { renderStandImage, StandOptions } from '../world/standTexture';
+import { renderStandImageAsync, StandOptions } from '../world/standTexture';
 import { SchemaViewer } from './SchemaViewer';
 
 const label = 'font-mono text-[10px] uppercase tracking-[0.24em] text-slate-500';
@@ -28,6 +28,9 @@ export function ProjectDrawer({
   const scroller = useRef<HTMLElement | null>(null);
   const [siteIdx, setSiteIdx] = useState<number | null>(null);
   const [frameLoaded, setFrameLoaded] = useState(false);
+  // The live site is attached only after the panel has finished opening: parsing a heavy page
+  // right at the click froze the opening animation for a third of a second.
+  const [frameSrc, setFrameSrc] = useState<string | null>(null);
   // the board of the stop, redrawn large for reading (software stops only)
   const [schemaUrl, setSchemaUrl] = useState<string | null>(null);
   const [zoom, setZoom] = useState(false);
@@ -45,11 +48,25 @@ export function ProjectDrawer({
           new Promise((r) => setTimeout(r, 1500)),
         ])
       : Promise.resolve();
+    let url: string | null = null;
+    let timer = 0;
     fonts.then(() => {
-      if (!dead) setSchemaUrl(renderStandImage(schema, 2.4));
+      // after the panel's slide-in, so drawing the big image never stutters the animation
+      timer = window.setTimeout(() => {
+        if (dead) return;
+        renderStandImageAsync(schema, 2.4)
+          .then((u) => {
+            url = u;
+            if (dead) URL.revokeObjectURL(u);
+            else setSchemaUrl(u);
+          })
+          .catch(() => undefined);
+      }, 520);
     });
     return () => {
       dead = true;
+      clearTimeout(timer);
+      if (url) URL.revokeObjectURL(url);
     };
   }, [schema]);
   const sites = project.sites;
@@ -70,6 +87,13 @@ export function ProjectDrawer({
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose, site, zoom]);
+
+  useEffect(() => {
+    setFrameSrc(null);
+    if (!site) return;
+    const t = window.setTimeout(() => setFrameSrc(site.url), 480);
+    return () => clearTimeout(t);
+  }, [site]);
 
   // A live site shares the page's main thread: freeze the 3D world while it is shown.
   useEffect(() => {
@@ -162,14 +186,16 @@ export function ProjectDrawer({
                   Загружаем сайт…
                 </div>
               )}
+              {frameSrc && (
               <iframe
                 key={site.id}
-                src={site.url}
+                src={frameSrc}
                 title={site.name}
                 referrerPolicy="no-referrer"
                 onLoad={() => setFrameLoaded(true)}
                 className="min-h-0 w-full flex-1 border-0 bg-white"
               />
+              )}
             </div>
           </section>
         )}
@@ -194,6 +220,7 @@ export function ProjectDrawer({
                       <img
                         src={s.slides[0]}
                         alt={s.name}
+                        decoding="async"
                         className="h-full w-full object-cover object-top transition duration-500 group-hover:scale-[1.04]"
                       />
                     </span>

@@ -329,8 +329,12 @@ const TransitionShader = {
   `,
 };
 
-export function createTransitionPass(): ShaderPass {
-  const pass = new ShaderPass(TransitionShader);
+export function createTransitionPass(taps = 10): ShaderPass {
+  const shader = {
+    ...TransitionShader,
+    fragmentShader: TransitionShader.fragmentShader.replace('const int TAPS = 10;', `const int TAPS = ${taps};`),
+  };
+  const pass = new ShaderPass(shader);
   pass.enabled = false; // only costs anything while a transition is playing
   return pass;
 }
