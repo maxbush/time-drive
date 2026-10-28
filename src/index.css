@@ -2,6 +2,7 @@
 
 /* Landscape phones: very little height, so panels switch to a compact layout */
 @custom-variant short (@media (max-height: 480px));
+@custom-variant compact (@media (max-height: 700px)); /* small laptop screens */
 
 @theme {
   --font-sans: "Inter Variable", Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;

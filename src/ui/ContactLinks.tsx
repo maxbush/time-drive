@@ -19,7 +19,7 @@ export function ContactLinks({ subject, large = false }: { subject: string; larg
     );
   };
 
-  const row = 'flex items-center gap-4 border-b border-white/12 py-3.5 first:pt-0 last:border-b-0 last:pb-0 short:py-2';
+  const row = 'flex items-center gap-4 border-b border-white/12 py-3.5 first:pt-0 last:border-b-0 last:pb-0 compact:py-2.5 short:py-2';
   // (no truncation: the address must never be cut; it may break after the @ on a narrow screen)
   const valueCls = `min-w-0 whitespace-nowrap font-light text-white transition hover:text-sky-200 ${
     large ? 'text-[18px] short:text-[14px]' : 'text-base'
