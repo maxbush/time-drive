@@ -687,7 +687,7 @@ export class WorldSceneEngine {
     if (!params0.has('noasync')) await this.precompileAsync();
     if (this.disposed) return;
     await new Promise<void>((r) => requestAnimationFrame(() => r()));
-    this.warmUp();
+    await this.warmUp();
     this.live = true; // from now on the frame loop renders
     onProgress?.(1);
   }
@@ -1534,7 +1534,12 @@ export class WorldSceneEngine {
 
   }
 
-  private warmUp() {
+  // One forced frame of everything, so that nothing compiles or uploads during the first seconds of
+  // the drive. Done in stages with a pause between them (each stage a few hundred ms instead of one
+  // block): the reflection, the scene with its shadows, the post-processing chain. Nothing is
+  // drawn to the screen before the last stage (the screen is a different render target, i.e.
+  // different shader variants).
+  private async warmUp() {
     const prevAvenue = this.avenue.group.visible;
     const prevArch = this.archGroup.visible;
     const prevCosmos = this.spaceCosmos.group.visible;
@@ -1555,11 +1560,27 @@ export class WorldSceneEngine {
     this.spaceCosmos.update(0, this.vehicle.position, 1);
     this.renderer.shadowMap.needsUpdate = true;
     this.updatePlanarReflection();
-    // Also compile the transition post pass now (it is toggled on mid-journey).
-    this.transPass.enabled = true;
+    await WorldSceneEngine.breathe();
+
+    const passes = this.composer.passes;
+    const savedEnabled = passes.map((p) => p.enabled);
+    const toScreen = this.composer.renderToScreen;
+    this.composer.renderToScreen = false;
+    // stage 1: the scene itself (and its shadow map)
+    passes.forEach((p, i) => (p.enabled = i === 0));
+    this.composer.render();
+    await WorldSceneEngine.breathe();
+    // stage 2: + the transition pass (toggled on mid-journey) and the bloom
     this.transPass.uniforms.uWarp.value = 0.01;
     this.transPass.uniforms.uFlash.value = 0.001;
     this.transPass.uniforms.uAspect.value = this.camera.aspect;
+    passes.forEach((p, i) => (p.enabled = i <= 2));
+    this.composer.render();
+    await WorldSceneEngine.breathe();
+    // stage 3: the whole chain, to the screen
+    passes.forEach((p, i) => (p.enabled = savedEnabled[i]));
+    this.transPass.enabled = true;
+    this.composer.renderToScreen = toScreen;
     this.composer.render();
     this.transPass.enabled = false;
 

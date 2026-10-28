@@ -213,7 +213,7 @@ export interface TextureLibrary {
  * High-definition 1024x1024 Damp Urban Asphalt with multi-scale coarse mineral aggregate,
  * longitudinal wheel-track polish, rain puddle patches, and bitumen tar repair seams.
  */
-function buildAsphaltSet(anisotropy: number): PBRTextureSet {
+async function buildAsphaltSet(anisotropy: number, pause: () => Promise<void>): Promise<PBRTextureSet> {
   const w = 1024;
   const h = 1024;
   const rng = mulberry32(104729);
@@ -225,6 +225,9 @@ function buildAsphaltSet(anisotropy: number): PBRTextureSet {
   const heightBuf = new Float32Array(w * h);
 
   for (let y = 0; y < h; y++) {
+    // a million pixels of noise: hand control back to the browser every 128 rows (same pixel order,
+    // so the same texture)
+    if (y > 0 && (y & 127) === 0) await pause();
     const v = y / h;
     for (let x = 0; x < w; x++) {
       const u = x / w;
@@ -876,7 +879,7 @@ export async function createTextureLibrary(
 ): Promise<TextureLibrary> {
   const maxAnisotropy = Math.min(maxAniso, renderer.capabilities.getMaxAnisotropy());
 
-  const asphalt = buildAsphaltSet(maxAnisotropy);
+  const asphalt = await buildAsphaltSet(maxAnisotropy, pause);
   await pause();
   const sidewalk = buildStoneOrBrickSet(
     {
