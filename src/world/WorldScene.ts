@@ -391,10 +391,10 @@ export class WorldSceneEngine {
     this.camera = new THREE.PerspectiveCamera(50, width / height, 0.35, 2200);
     this.camera.layers.enable(1); // layer 1: visible in main cam, excluded from planar reflection
 
-    const texLib = createTextureLibrary(this.renderer);
+    const texLib = createTextureLibrary(this.renderer, this.weak ? 8 : 16);
     const palette = createMaterialPalette(texLib, { mobile: this.mobile });
 
-    this.envSystem = createEnvironment(this.renderer, this.scene, palette);
+    this.envSystem = createEnvironment(this.renderer, this.scene, palette, { weak: this.weak });
     if (this.mobile) {
       // No shadow map on phones: stop the sun from casting before anything compiles
       this.scene.traverse((o) => {
@@ -418,7 +418,7 @@ export class WorldSceneEngine {
     const report = () => onProgress?.(Math.min(1, carFrac * 0.72 + treeFrac * 0.28));
     const treesReady = loadAndPlaceElmTrees(
       this.scene,
-      this.mobile ? allTrees.filter((_, i) => i % 2 === 0) : allTrees,
+      this.mobile || this.weak ? allTrees.filter((_, i) => i % 2 === 0) : allTrees,
       (f) => {
         treeFrac = f;
         report();
@@ -443,7 +443,7 @@ export class WorldSceneEngine {
         carFrac = f;
         report();
       },
-      this.renderer, { mobile: this.mobile });
+      this.renderer, { mobile: this.mobile, weak: this.weak });
     this.fireTrails = createFireTrails(this.scene);
     // Loading screen waits for the car AND the tree GLB; tree shaders get a
     // second compile so they never stutter on first appearance.
@@ -870,7 +870,7 @@ export class WorldSceneEngine {
   }
 
   private updatePlanarReflection() {
-    if (this.vehicle.position.y > 12 || this.cityHidden || this.reflectionDisabled) return;
+    if (this.vehicle.position.y > 12 || this.cityHidden || this.reflectionDisabled || this.paused) return;
     this.camera.updateMatrixWorld();
 
     const camPos = new THREE.Vector3();
@@ -1096,11 +1096,14 @@ export class WorldSceneEngine {
     // Shadows: on the heavy street they refresh when the car has moved (or after a quarter
     // of a second) instead of by frame count, so the car's shadow never trails behind it.
     const sp = this.vehicle.position;
+    const moved = Math.abs(sp.x - this.lastShadowPos.x) + Math.abs(sp.y - this.lastShadowPos.y) + Math.abs(sp.z - this.lastShadowPos.z);
     let shadowNow: boolean;
-    if (!heavyZone) {
+    // Idle = zero shadow work: nothing moved, nothing to re-render.
+    if (moved < 0.05) {
+      shadowNow = false;
+    } else if (!heavyZone) {
       shadowNow = this.frameCounter % 2 === 0;
     } else {
-      const moved = Math.abs(sp.x - this.lastShadowPos.x) + Math.abs(sp.y - this.lastShadowPos.y) + Math.abs(sp.z - this.lastShadowPos.z);
       shadowNow = moved > 0.9 || this.elapsedTime - this.lastShadowT > 0.25;
     }
     shadowNow = shadowNow && !this.cityHidden;
@@ -1126,7 +1129,7 @@ export class WorldSceneEngine {
     this.fpsAccum += dt;
     this.rawAccum += rawDt;
     // Telemetry re-renders the whole React tree: every 0.12s is too often on a phone CPU
-    if (this.fpsAccum >= (this.mobile ? 0.4 : 0.12)) {
+    if (this.fpsAccum >= 0.25) {
       this.currentFps = Math.round(this.fpsFrames / this.fpsAccum); // clamped: what the governor uses
       this.displayFps = Math.round(this.fpsFrames / Math.max(this.rawAccum, 1e-3)); // real, for the readout
       this.rawAccum = 0;
@@ -1300,6 +1303,8 @@ export class WorldSceneEngine {
     this.composer.setPixelRatio(next);
     this.renderer.setSize(this.viewW, this.viewH);
     this.composer.setSize(this.viewW, this.viewH);
+    // Bloom is low-frequency: at render res >=1.5x half-res bloom is free
+    if (!this.mobile && !this.weak) this.bloomScale = next >= 1.5 ? 0.5 : 1;
     this.bloomPass.setSize(this.viewW * this.bloomScale, this.viewH * this.bloomScale);
     this.reflectRT.setSize(
       this.mobile ? 64 : Math.max(256, Math.floor(this.viewW * next * this.reflScale)),

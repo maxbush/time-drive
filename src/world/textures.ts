@@ -867,8 +867,8 @@ export function createShowcaseScreenTexture(
   return tex;
 }
 
-export function createTextureLibrary(renderer: THREE.WebGLRenderer): TextureLibrary {
-  const maxAnisotropy = Math.min(16, renderer.capabilities.getMaxAnisotropy());
+export function createTextureLibrary(renderer: THREE.WebGLRenderer, maxAniso = 16): TextureLibrary {
+  const maxAnisotropy = Math.min(maxAniso, renderer.capabilities.getMaxAnisotropy());
 
   const asphalt = buildAsphaltSet(maxAnisotropy);
   const sidewalk = buildStoneOrBrickSet(

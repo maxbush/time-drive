@@ -224,7 +224,8 @@ function buildDistantSkyline(): { group: THREE.Group; beaconMaterials: THREE.Mes
 export function createEnvironment(
   renderer: THREE.WebGLRenderer,
   scene: THREE.Scene,
-  materials: MaterialPalette
+  materials: MaterialPalette,
+  opts: { weak?: boolean } = {}
 ): EnvironmentSystem {
   scene.fog = new THREE.FogExp2('#0d182e', 0.00115);
 
@@ -274,7 +275,7 @@ export function createEnvironment(
   const skyDirLight = new THREE.DirectionalLight('#ffdcb8', 1.42);
   skyDirLight.position.set(55, 68, 45);
   skyDirLight.castShadow = true;
-  skyDirLight.shadow.mapSize.set(1024, 1024);
+  skyDirLight.shadow.mapSize.set(opts.weak ? 512 : 1024, opts.weak ? 512 : 1024);
   skyDirLight.shadow.camera.near = 10;
   skyDirLight.shadow.camera.far = 260;
   const shadowSpan = 75;

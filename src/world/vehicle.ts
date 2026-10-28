@@ -187,7 +187,7 @@ export function createVehicleController(
   scene: THREE.Scene,
   onProgress?: (fraction: number) => void,
   renderer?: THREE.WebGLRenderer,
-  opts: { mobile?: boolean } = {}
+  opts: { mobile?: boolean; weak?: boolean } = {}
 ): VehicleController {
   // One-off PMREM of a soft-box studio, used ONLY by the car's materials (the
   // city keeps its dusk look). No per-frame cost, no extra lights.
@@ -245,8 +245,8 @@ export function createVehicleController(
     const spot = new THREE.SpotLight('#ffe2b0', 34, 68, 0.24, 0.6, 1.55);
     spot.position.set(x, 1.05, -3.55);
     spot.target.position.set(x * 1.8, -0.5, -27);
-    if (!opts.mobile) {
-      // Phones: no real headlight spots (two more lights in every fragment's loop)
+    if (!opts.mobile && !opts.weak) {
+      // Phones & weak GPUs: no real headlight spots (two more lights per fragment)
       root.add(spot);
       root.add(spot.target);
     }
