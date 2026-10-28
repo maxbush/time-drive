@@ -699,7 +699,7 @@ export function createVehicleController(
   //     planar reflection camera (detailed car moved to layer 1).
   // (Phones have shadows and the planar reflection switched off, so skip these
   // two proxies entirely — saves a 1.6 MB download and two meshes.)
-  if (!opts.mobile) loader.load('./models/bttf_delorean_shadow.glb', (gltf) => {
+  if (!opts.mobile) loader.load('./models/bttf_delorean_shadow_v2.glb', (gltf) => {
     const mkNormalized = () => {
       const model = gltf.scene.clone(true);
       const bounds = new THREE.Box3().setFromObject(model);

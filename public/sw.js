@@ -1,6 +1,6 @@
 // Cache-first for heavy static assets (GLB models, fonts): GitHub Pages only
 // holds a 10-minute cache, so repeat visits re-download megabytes otherwise.
-const CACHE = 'td-assets-v1';
+const CACHE = 'td-assets-v2'; // bump when a .glb changes: the cache is cache-first, old entries are purged on activate
 const MATCH = /\.(glb|woff2?|ttf|otf)(\?|$)/;
 
 self.addEventListener('install', (e) => self.skipWaiting());

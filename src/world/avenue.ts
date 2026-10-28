@@ -11,6 +11,53 @@ export interface AvenueSystem {
   lightAnchors: LightAnchor[];
   treePlacements: TreePlacement[];
   update: (time: number) => void;
+  /** Per-frame: pixels per world unit at distance 1 (see fireTrails) and the scene fog density. */
+  setHaloView: (pxScale: number, fogDensity: number) => void;
+}
+
+// The lamp halos used to be one Sprite each (one draw call each). They are now ONE batch of
+// camera-facing, additive, world-sized points: same look, a single draw call.
+function createHaloBatch(positions: number[], map: THREE.Texture | null, size: number, opacity: number) {
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(positions), 3));
+  const mat = new THREE.ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    uniforms: {
+      uMap: { value: map },
+      uSize: { value: size },
+      uOpacity: { value: opacity },
+      uPx: { value: 900 },
+      uFog: { value: 0.0016 },
+    },
+    vertexShader: /* glsl */ `
+      uniform float uSize;
+      uniform float uPx;
+      varying float vDist;
+      void main() {
+        vec4 mv = modelViewMatrix * vec4(position, 1.0);
+        vDist = -mv.z;
+        gl_Position = projectionMatrix * mv;
+        gl_PointSize = min(uSize * uPx / max(vDist, 0.1), 256.0);
+      }
+    `,
+    fragmentShader: /* glsl */ `
+      uniform sampler2D uMap;
+      uniform float uOpacity;
+      uniform float uFog;
+      varying float vDist;
+      void main() {
+        vec4 t = texture2D(uMap, gl_PointCoord);
+        float fogAmt = exp(-pow(uFog * vDist, 2.0)); // additive glow fades into the haze
+        gl_FragColor = vec4(t.rgb * t.a * uOpacity * fogAmt, 1.0);
+      }
+    `,
+  });
+  const pts = new THREE.Points(geo, mat);
+  pts.frustumCulled = false;
+  pts.name = 'lampHalos';
+  return pts;
 }
 
 function makeWorldUVBox(
@@ -52,6 +99,7 @@ function makeTransformedGeo(geo: THREE.BufferGeometry, m: THREE.Matrix4): THREE.
 export function buildGrandAvenue(palette: MaterialPalette): AvenueSystem {
   const group = new THREE.Group();
   const lightAnchors: LightAnchor[] = [];
+  const haloPositions: number[] = [];
   const treePlacements: TreePlacement[] = [];
 
   // ===========================================================================
@@ -282,10 +330,7 @@ export function buildGrandAvenue(palette: MaterialPalette): AvenueSystem {
       m4.makeTranslation(bulbX, bulbY, z);
       hdrWarmGeos.push(makeTransformedGeo(glassBellGeo, m4));
 
-      const halo = new THREE.Sprite(palette.haloSpriteMat);
-      halo.position.set(bulbX, bulbY, z);
-      halo.scale.set(2.5, 2.5, 1);
-      group.add(halo);
+      haloPositions.push(bulbX, bulbY, z);
 
       lightAnchors.push({
         position: new THREE.Vector3(bulbX, bulbY - 0.3, z),
@@ -341,11 +386,22 @@ export function buildGrandAvenue(palette: MaterialPalette): AvenueSystem {
   addMerged(hdrWarmGeos, palette.hdrWarmGlow, false);
   addMerged(hdrCyanGeos, palette.hdrCyanGlow, false);
 
+  const halos = haloPositions.length
+    ? createHaloBatch(haloPositions, palette.haloSpriteMat.map, 2.5, palette.haloSpriteMat.opacity)
+    : null;
+  if (halos) group.add(halos);
+
   return {
     group,
     roadMesh,
     lightAnchors,
     treePlacements,
     update: (_time: number) => {},
+    setHaloView: (pxScale: number, fogDensity: number) => {
+      if (!halos) return;
+      const u = (halos.material as THREE.ShaderMaterial).uniforms;
+      u.uPx.value = pxScale;
+      u.uFog.value = fogDensity;
+    },
   };
 }

@@ -16,7 +16,7 @@ import { buildGrandAvenue, AvenueSystem } from './avenue';
 import { buildWorldArchitecture } from './buildings';
 import { LightAnchor } from './architectureBuilder';
 import { CarModelId, createVehicleController, VehicleController } from './vehicle';
-import { loadAndPlaceElmTrees } from './trees';
+import { loadAndPlaceElmTrees, TreeLod } from './trees';
 import { createSpaceCosmos, SpaceCosmosSystem } from './spaceCosmos';
 
 export type CameraMode = 'chase' | 'orbit' | 'cinematic-low';
@@ -279,6 +279,7 @@ export class WorldSceneEngine {
   private sharpBoost = 0.3; // extra strength on the opening street (posters)
   private sharpFixed = false;
   private sharpCur = 0.12;
+  private treeLod: TreeLod | null = null; // full trees near the car, cheap ones far away
   private weak = false; // integrated / software GPU: lighter profile from the first frame
   private reflScale = 0.5; // planar reflection target size relative to the screen
   private smaaPass: SMAAPass | null = null;
@@ -424,8 +425,14 @@ export class WorldSceneEngine {
         report();
       },
       // leaves are alpha-tested double-sided quads: the costliest thing in the shadow pass
-      { leafShadows: !this.weak && !this.mobile }
-    );
+      {
+        leafShadows: !this.weak && !this.mobile,
+        nearRadius: this.weak || this.mobile ? 70 : 95,
+        cullRadius: this.weak || this.mobile ? 480 : 680,
+      }
+    ).then((lod) => {
+      this.treeLod = lod;
+    });
 
     // Build Act III Space Cosmos & Starfield Warp
     this.spaceCosmos = createSpaceCosmos(this.scene);
@@ -1051,6 +1058,7 @@ export class WorldSceneEngine {
 
     this.renderer.info.reset();
     this.vehicle.update(sdt, this.input, this.autoCruise, slowdownFactor, tr.cruiseBoost);
+    this.treeLod?.update(this.vehicle.position.z);
     this.fireTrails.update(
       this.elapsedTime,
       this.vehicle.root,
@@ -1060,6 +1068,10 @@ export class WorldSceneEngine {
     );
     this.updateCamera(sdt);
     this.avenue.update(this.elapsedTime);
+    this.avenue.setHaloView(
+      (this.renderer.domElement.height * 0.5) / Math.tan(THREE.MathUtils.degToRad(this.camera.fov * 0.5)),
+      (this.scene.fog as THREE.FogExp2 | null)?.density ?? 0.0016
+    );
     this.envSystem.update(this.elapsedTime, this.vehicle.position);
     this.spaceCosmos.update(this.elapsedTime, this.vehicle.position, spaceFactor, this.vehicle.speed);
     palette.updateUniforms(this.elapsedTime);
