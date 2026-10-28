@@ -701,6 +701,11 @@ export class WorldSceneEngine {
     this.panelShift = Math.max(-0.4, Math.min(0.4, fraction));
   }
 
+  /** Integrated / software GPU: started in the lighter profile (used to offer the light version). */
+  public get lowEnd() {
+    return this.weak;
+  }
+
   public setPaused(p: boolean) {
     this.paused = p;
     if (!p) this.lastPerfTime = performance.now();

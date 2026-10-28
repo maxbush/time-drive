@@ -11,6 +11,7 @@ import { FinalePanel } from './ui/FinalePanel';
 import { RotateHint } from './ui/RotateHint';
 import { DevPanel } from './ui/DevPanel';
 import { SimpleSite, SimpleReason } from './ui/SimpleSite';
+import { SimpleHint } from './ui/SimpleHint';
 import { STAND_BY_PROJECT } from './world/standSpecs';
 
 function webglSupported(): boolean {
@@ -225,6 +226,45 @@ export default function App() {
   const activeProject = station && station !== 'space' ? PROJECTS[station as ProjectId] : null;
   const showFinale = station === 'space';
 
+  // An offer of the light version (/simple/), once per visit: at once on a weak GPU, or when the
+  // frame rate stays low for a while. Dismissed = not shown again in this visit.
+  const [hintOpen, setHintOpen] = useState(false);
+  const hintDone = useRef(false);
+  const lowSince = useRef(0);
+  const offerHint = () => {
+    if (hintDone.current) return;
+    try {
+      if (sessionStorage.getItem('td-hint')) return;
+    } catch {
+      /* private mode */
+    }
+    hintDone.current = true;
+    setHintOpen(true);
+  };
+  const closeHint = () => {
+    setHintOpen(false);
+    try {
+      sessionStorage.setItem('td-hint', '1');
+    } catch {
+      /* private mode */
+    }
+  };
+  useEffect(() => {
+    if (loading || !engineRef.current?.lowEnd) return;
+    const t = window.setTimeout(offerHint, 3500);
+    return () => window.clearTimeout(t);
+  }, [loading]);
+  useEffect(() => {
+    if (loading || paused) {
+      lowSince.current = 0;
+      return;
+    }
+    if (telemetry.fps > 0 && telemetry.fps < 26) {
+      if (!lowSince.current) lowSince.current = Date.now();
+      else if (Date.now() - lowSince.current > 6000) offerHint();
+    } else lowSince.current = 0;
+  }, [telemetry.fps, loading, paused]);
+
   // The side panel belongs to a stop: the website stop opens it on arrival (previews of
   // the sites), the others open it from "Подробнее". Driving away closes it.
   useEffect(() => {
@@ -253,12 +293,6 @@ export default function App() {
     Math.min(100, ((320 - telemetry.zPos + telemetry.yPos) / (320 - -580)) * 100)
   );
 
-  // "Simple version": stop the 3D world completely (it may be struggling) and show the plain page
-  const openSimple = () => {
-    engineRef.current?.dispose();
-    engineRef.current = null;
-    setSimple('manual');
-  };
   const openContact = (subject: string) => setContact({ open: true, subject });
   const engine = () => engineRef.current;
   const chIdx = Math.max(0, CHAPTERS.findIndex((c) => c.id === telemetry.activeZoneId));
@@ -301,8 +335,11 @@ export default function App() {
         }}
       />
 
-      <Loader visible={loading} pct={loadPct} onSimple={openSimple} />
+      <Loader visible={loading} pct={loadPct} />
       {showRotate && <RotateHint onContinue={() => setPortraitOk(true)} />}
+      {hintOpen && !loading && !panelOpen && !showFinale && !liveView && !contact.open && hudVisible && (
+        <SimpleHint onClose={closeHint} />
+      )}
 
       {/* Time-jump / launch flash. The white-out itself is drawn in the WebGL post pass
           (so it blooms); this layer only carries the caption, dark on the white. */}

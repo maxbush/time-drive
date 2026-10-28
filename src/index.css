@@ -174,3 +174,34 @@ input, textarea {
   100% { transform: scaleX(0.9639); }
 }
 
+
+/* the tail half of the dial arc (behind the head): rotates by (angle - 120deg), only shows once the needle is past the middle */
+.loader-rot-tail { animation: loader-rot-tail 40s linear forwards; will-change: transform, opacity; }
+@keyframes loader-rot-tail {
+  0% { transform: rotate(-240.00deg); opacity: 0; }
+  2.5% { transform: rotate(-206.94deg); opacity: 0; }
+  5% { transform: rotate(-178.60deg); opacity: 0; }
+  7.5% { transform: rotate(-154.30deg); opacity: 0; }
+  10% { transform: rotate(-133.46deg); opacity: 0; }
+  12.5% { transform: rotate(-115.60deg); opacity: 1; }
+  15% { transform: rotate(-100.28deg); opacity: 1; }
+  17.5% { transform: rotate(-87.15deg); opacity: 1; }
+  20% { transform: rotate(-75.89deg); opacity: 1; }
+  22.5% { transform: rotate(-66.23deg); opacity: 1; }
+  25% { transform: rotate(-57.96deg); opacity: 1; }
+  27.5% { transform: rotate(-50.86deg); opacity: 1; }
+  30% { transform: rotate(-44.77deg); opacity: 1; }
+  32.5% { transform: rotate(-39.55deg); opacity: 1; }
+  35% { transform: rotate(-35.08deg); opacity: 1; }
+  37.5% { transform: rotate(-31.25deg); opacity: 1; }
+  40% { transform: rotate(-27.96deg); opacity: 1; }
+  42.5% { transform: rotate(-25.14deg); opacity: 1; }
+  45% { transform: rotate(-22.72deg); opacity: 1; }
+  47.5% { transform: rotate(-20.65deg); opacity: 1; }
+  50% { transform: rotate(-18.87deg); opacity: 1; }
+  52.5% { transform: rotate(-17.34deg); opacity: 1; }
+  55% { transform: rotate(-16.04deg); opacity: 1; }
+  57.5% { transform: rotate(-14.92deg); opacity: 1; }
+  60% { transform: rotate(-13.96deg); opacity: 1; }
+  100% { transform: rotate(-8.67deg); opacity: 1; }
+}

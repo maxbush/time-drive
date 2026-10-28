@@ -2,6 +2,7 @@ import { defineConfig, Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { CONTACT, OWNER, PROJECTS, SITES } from './src/content';
+import { buildSimplePage, mainJsonLd } from './scripts/simplePage';
 
 const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
@@ -10,6 +11,10 @@ const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replac
 function seoPlugin(): Plugin {
   return {
     name: 'time-drive-seo',
+    // /simple/ : the static, script-free version of the portfolio (see scripts/simplePage.ts)
+    generateBundle() {
+      this.emitFile({ type: 'asset', fileName: 'simple/index.html', source: buildSimplePage() });
+    },
     transformIndexHtml(html, ctx) {
       // The fonts the first screen needs, found among the hashed build files, are fetched at once
       // instead of when the first piece of text asks for them (a late font swap = a visible jump).
@@ -29,17 +34,9 @@ function seoPlugin(): Plugin {
         `<section><h2>${esc(PROJECTS.web.title)}</h2><p>${esc(PROJECTS.web.lead)} ${esc(PROJECTS.web.note ?? '')}</p><ul>${siteItems}</ul></section>` +
         bot(PROJECTS.albion) +
         bot(PROJECTS.tenders) +
+        `<p><a href="./simple/">Версия без 3D: все проекты одной страницей</a></p>` +
         `<section><h2>Контакты</h2><p><a href="https://t.me/${CONTACT.telegramUser}">Telegram @${CONTACT.telegramUser}</a>, <a href="mailto:${CONTACT.email}">${CONTACT.email}</a></p></section>`;
-      const ld = {
-        '@context': 'https://schema.org',
-        '@type': 'Person',
-        name: OWNER.name,
-        url: 'https://maxbush.github.io/time-drive/',
-        jobTitle: 'Веб-разработчик, разработка ботов и автоматизации',
-        email: CONTACT.email,
-        sameAs: [`https://t.me/${CONTACT.telegramUser}`],
-        knowsAbout: ['Веб-разработка', 'SEO', 'Telegram-боты', 'Автоматизация', 'Аналитика данных'],
-      };
+      const ld = mainJsonLd();
       // the links of the hidden copy stay readable for crawlers and screen readers, but are out of the
       // keyboard focus order (an invisible focused link that Enter takes you away with is a trap)
       const staticContent = content.replace(/<a /g, '<a tabindex="-1" ');

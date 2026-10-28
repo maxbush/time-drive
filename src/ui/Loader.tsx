@@ -6,17 +6,10 @@ import { OWNER, UI } from '../content';
 // time-based ease-out, see loader-rot / loader-scale in index.css), so they keep moving smoothly even
 // when the main thread is busy building the world or compiling shaders. JavaScript only counts the
 // number and, once the world is ready, brings the dial to the full 88 and lets the layer fade out.
-export function Loader({ visible, pct, onSimple }: { visible: boolean; pct: number; onSimple?: () => void }) {
-  void pct; // (the dial is time-driven; real progress only decides when it finishes)
-  // After a while on a slow device offer the plain version instead of making people wait
-  const [slow, setSlow] = useState(false);
-  useEffect(() => {
-    if (!visible) return;
-    const t = window.setTimeout(() => setSlow(true), 9000);
-    return () => window.clearTimeout(t);
-  }, [visible]);
+export function Loader({ visible, pct }: { visible: boolean; pct: number }) {
   const needleRef = useRef<HTMLDivElement>(null);
   const ringRef = useRef<HTMLDivElement>(null);
+  const tailRef = useRef<HTMLDivElement>(null);
   const numRef = useRef<SVGTextElement>(null);
   const barRef = useRef<HTMLDivElement>(null);
   const [gone, setGone] = useState(false);
@@ -42,17 +35,21 @@ export function Loader({ visible, pct, onSimple }: { visible: boolean; pct: numb
   // loaded: from wherever the animation is now, run up to the full 88 and fade out
   useEffect(() => {
     if (visible) return;
-    const finish = (el: HTMLElement | null, to: string) => {
+    const finish = (el: HTMLElement | null, to: string, opacityTo?: string) => {
       if (!el) return;
-      const cur = getComputedStyle(el).transform; // where the animation is right now
+      const cs = getComputedStyle(el);
+      const cur = cs.transform; // where the animation is right now
       el.style.animation = 'none';
       el.style.transform = cur === 'none' ? '' : cur;
+      if (opacityTo) el.style.opacity = cs.opacity;
       void el.offsetWidth; // commit the frozen position before the transition starts
-      el.style.transition = 'transform 0.5s cubic-bezier(0.2, 0.7, 0.2, 1)';
+      el.style.transition = 'transform 0.5s cubic-bezier(0.2, 0.7, 0.2, 1), opacity 0.5s';
       el.style.transform = to;
+      if (opacityTo) el.style.opacity = opacityTo;
     };
     finish(needleRef.current, 'rotate(120deg)');
     finish(ringRef.current, 'rotate(120deg)');
+    finish(tailRef.current, 'rotate(0deg)', '1');
     finish(barRef.current, 'scaleX(1)');
     if (numRef.current) numRef.current.textContent = '88';
   }, [visible]);
@@ -171,12 +168,21 @@ export function Loader({ visible, pct, onSimple }: { visible: boolean; pct: numb
             }}
             aria-hidden="true"
           >
+            {/* two 120 deg wedges: the head (white to amber) ends at the needle, the tail (blue to white)
+                follows it. Their gaps keep every wedge inside the dial sector at any angle. */}
+            <div
+              ref={tailRef}
+              className="loader-rot-tail absolute inset-0"
+              style={{
+                opacity: 0,
+                background: 'conic-gradient(from -120deg, #38bdf8 0deg, #f8fafc 120deg, transparent 120deg)',
+              }}
+            />
             <div
               ref={ringRef}
               className="loader-rot absolute inset-0"
               style={{
-                background:
-                  'conic-gradient(from -240deg, #38bdf8 0deg, #f8fafc 170deg, #f59e0b 240deg, transparent 240deg)',
+                background: 'conic-gradient(from -120deg, #f8fafc 0deg, #f59e0b 120deg, transparent 120deg)',
               }}
             />
           </div>
@@ -213,14 +219,13 @@ export function Loader({ visible, pct, onSimple }: { visible: boolean; pct: numb
           <span>{pct >= 90 ? UI.stageWarm : UI.stageCar}</span>
           <span>...</span>
         </div>
-        {slow && onSimple && (
-          <button
-            onClick={onSimple}
-            className="mt-5 border-b border-white/30 pb-0.5 font-mono text-[10px] uppercase tracking-[0.2em] text-slate-300 transition hover:border-amber-300 hover:text-amber-200"
-          >
-            Долго грузится? Открыть простую версию →
-          </button>
-        )}
+        {/* a real link to the light version (/simple/): leaving this page also stops the download */}
+        <a
+          href="./simple/"
+          className="mt-6 border-b border-white/25 pb-0.5 font-mono text-[10px] uppercase tracking-[0.2em] text-slate-400 transition hover:border-amber-300 hover:text-amber-200"
+        >
+          {UI.simpleVersion} →
+        </a>
       </div>
     </div>
   );

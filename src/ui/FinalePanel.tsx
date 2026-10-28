@@ -24,10 +24,13 @@ export function FinalePanel({ onRestart }: { onRestart: () => void }) {
       </div>
       <ContactLinks subject="Обсудить проект" large />
 
-      <div className="mt-5 border-t border-white/10 pt-4 compact:mt-3 compact:pt-3 short:mt-2.5 short:pt-2.5">
+      <div className="mt-5 flex flex-wrap items-center gap-x-6 gap-y-2 border-t border-white/10 pt-4 compact:mt-3 compact:pt-3 short:mt-2.5 short:pt-2.5">
         <button onClick={onRestart} className={link}>
           {UI.restart} ↺
         </button>
+        <a href="./simple/" className={link}>
+          {UI.simpleVersion} →
+        </a>
       </div>
     </section>
   );
