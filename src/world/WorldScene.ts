@@ -212,7 +212,10 @@ export class WorldSceneEngine {
     0.0, 0.0, 0.5, 0.5,
     0.0, 0.0, 0.0, 1.0
   );
-  private reflectionClipPlane = [new THREE.Plane(new THREE.Vector3(0, 1, 0), -0.02)];
+  private reflectPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -0.02); // the road plane, normal up
+  private reflectClip = new THREE.Plane();
+  private reflectClip4 = new THREE.Vector4();
+  private reflectQ = new THREE.Vector4();
 
   private envSystem!: EnvironmentSystem;
   private avenue!: AvenueSystem;
@@ -989,19 +992,39 @@ export class WorldSceneEngine {
     this.reflectMatrix.multiply(this.reflectCam.projectionMatrix);
     this.reflectMatrix.multiply(this.reflectCam.matrixWorldInverse);
 
+    // Everything below the road plane must stay out of the reflection. That used to be a clipping
+    // plane on the renderer - which makes a second, clipped variant of every shader program (about
+    // half of all programs, half of the compile time) and a discard in every fragment shader.
+    // The oblique near-plane trick does the same in the projection matrix itself (the technique of
+    // three's Reflector): the near plane is moved onto the road, the hardware clips the rest, and the
+    // shaders stay the ordinary ones. (The texture matrix above is taken from the plain projection.)
+    {
+      const p = this.reflectClip.copy(this.reflectPlane).applyMatrix4(this.reflectCam.matrixWorldInverse);
+      const plane = this.reflectClip4.set(p.normal.x, p.normal.y, p.normal.z, p.constant);
+      const m = this.reflectCam.projectionMatrix.elements;
+      const q = this.reflectQ;
+      q.x = (Math.sign(plane.x) + m[8]) / m[0];
+      q.y = (Math.sign(plane.y) + m[9]) / m[5];
+      q.z = -1;
+      q.w = (1 + m[10]) / m[14];
+      plane.multiplyScalar(2 / plane.dot(q));
+      m[2] = plane.x;
+      m[6] = plane.y;
+      m[10] = plane.z + 1 - 0.0005;
+      m[14] = plane.w;
+      this.reflectCam.projectionMatrixInverse.copy(this.reflectCam.projectionMatrix).invert();
+    }
+
     this.avenue.roadMesh.visible = false;
     const prevTarget = this.renderer.getRenderTarget();
     const prevShadows = this.renderer.shadowMap.autoUpdate;
     if (this.frameCounter > 1) {
       this.renderer.shadowMap.autoUpdate = false;
     }
-    this.renderer.clippingPlanes = this.reflectionClipPlane;
-
     this.renderer.setRenderTarget(this.reflectRT);
     this.renderer.clear();
     this.renderer.render(this.scene, this.reflectCam);
 
-    this.renderer.clippingPlanes = [];
     this.renderer.shadowMap.autoUpdate = prevShadows;
     this.renderer.setRenderTarget(prevTarget);
     this.avenue.roadMesh.visible = true;
@@ -1509,28 +1532,6 @@ export class WorldSceneEngine {
     groups.forEach((g, i) => (g.visible = prev[i])); // the collecting part of the call is synchronous
     await p;
 
-    // The planar reflection renders the same materials with a clipping plane: that is a second
-    // set of shader programs. Compile them in parallel too, otherwise the first reflection frame
-    // compiles ~100 programs one by one, right on the main thread.
-    if (!this.reflectionDisabled && !this.mobile) {
-      this.renderer.clippingPlanes = this.reflectionClipPlane;
-      const rt2 = this.renderer.getRenderTarget();
-      this.renderer.setRenderTarget(keyRT);
-      // compile() does not read renderer.clippingPlanes by itself: they only reach the shader key
-      // through a render() call. An empty-scene render (draws nothing) makes three register the
-      // plane, so the programs compiled next are the clipped variants the reflection really uses.
-      this.renderer.render(new THREE.Scene(), this.camera);
-      let p2: Promise<unknown>;
-      try {
-        p2 = this.renderer.compileAsync(this.scene, this.camera).catch(() => undefined);
-      } catch {
-        p2 = Promise.resolve();
-      }
-      this.renderer.setRenderTarget(rt2);
-      this.renderer.clippingPlanes = [];
-      this.renderer.render(new THREE.Scene(), this.camera); // register "no planes" again
-      await p2;
-    }
   }
 
   private warmUp() {
