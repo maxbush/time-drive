@@ -12,7 +12,9 @@ export function ChapterBar({
   onJump,
   onToggle,
   hideNext = false,
+  sidePad,
 }: {
+  sidePad?: { left: number; right: number }; // px covered by a side panel: the pill centres in the free part
   hideNext?: boolean; // e.g. a site is open full-screen: no floating button over it
   activeId: string;
   progressPct: number;
@@ -29,7 +31,10 @@ export function ChapterBar({
       {/* "Drive on" at a stop: a semi-transparent pill in the middle of the screen, above the
           side panels (z-36) so it is never covered, wherever the panel opens. */}
       {atStation && !finale && !hideNext && (
-        <div className="pointer-events-none fixed inset-x-0 bottom-14 z-[36] flex justify-center sm:bottom-[4.25rem] short:bottom-11">
+        <div
+          className="pointer-events-none fixed inset-x-0 bottom-14 z-[36] flex justify-center sm:bottom-[4.25rem] short:bottom-11"
+          style={{ paddingLeft: sidePad?.left ?? 0, paddingRight: sidePad?.right ?? 0 }}
+        >
           <button
             onClick={onToggle}
             className="pointer-events-auto rounded-full border border-white/25 bg-black/35 px-7 py-2.5 font-mono text-[11px] uppercase tracking-[0.24em] text-white/90 shadow-[0_8px_30px_rgba(0,0,0,0.35)] transition hover:border-white/50 hover:bg-black/60 hover:text-white short:px-5 short:py-1.5"

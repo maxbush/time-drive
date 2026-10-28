@@ -377,6 +377,15 @@ export default function App() {
               onJump={(id) => engine()?.jumpToZone(id)}
               onToggle={() => engine()?.toggleAutoCruise()}
               hideNext={liveView}
+              sidePad={
+                panelOpen
+                  ? (() => {
+                      // the side panel's width (same rule as the CSS), so "drive on" sits in the free part
+                      const w = Math.min(680, window.innerWidth * (window.innerHeight <= 480 ? 0.52 : 0.5));
+                      return panelDir === 1 ? { left: 0, right: w } : { left: w, right: 0 };
+                    })()
+                  : undefined
+              }
             />
           </div>
         </>
