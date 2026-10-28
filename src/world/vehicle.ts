@@ -530,7 +530,10 @@ export function createVehicleController(
   const wheelPivots: { pivot: THREE.Group; r: number }[] = [];
   const setupWheelPivots = (group: THREE.Group) => {
     wheelPivots.length = 0;
-    group.updateMatrixWorld(true);
+    // Everything below works in world space, so the whole chain up to the scene must be current:
+    // the car is now created (and may be posed / moved) before anything has been rendered, and a
+    // stale parent matrix put the re-pivoted wheels in the wrong place.
+    group.updateWorldMatrix(true, true);
     const carBox = new THREE.Box3().setFromObject(group);
     const carSize = carBox.getSize(new THREE.Vector3());
     const carC = carBox.getCenter(new THREE.Vector3());
@@ -585,8 +588,9 @@ export function createVehicleController(
       const parent = mesh.parent!;
       const pivot = new THREE.Group();
       parent.add(pivot);
-      parent.updateMatrixWorld(true);
+      parent.updateWorldMatrix(true, true);
       pivot.position.copy(parent.worldToLocal(c.clone()));
+      pivot.updateWorldMatrix(true, false);
       pivot.attach(mesh);
       // Resolve the spin axis ONCE in pivot-local space — recomputing it per
       // frame against the already-rotated matrix makes wheels never turn.
