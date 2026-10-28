@@ -164,6 +164,17 @@ function heightToNormalTexture(
   return tex;
 }
 
+// Roughness only needs to be smooth, not sharp: a half-size copy (a quarter of the memory) looks the
+// same, and the three.js material reads it with the same UVs.
+function halfRes(src: HTMLCanvasElement): HTMLCanvasElement {
+  const [c, ctx] = makeCanvas(Math.max(1, src.width >> 1), Math.max(1, src.height >> 1));
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(src, 0, 0, c.width, c.height);
+  src.width = src.height = 1; // release the full-size copy
+  return c;
+}
+
 function finalizeTexture(
   canvas: HTMLCanvasElement,
   isSRGB: boolean,
@@ -304,7 +315,7 @@ async function buildAsphaltSet(anisotropy: number, pause: () => Promise<void>): 
   return {
     map: finalizeTexture(colorCanvas, true, anisotropy, repeatX, repeatY),
     normalMap: heightBufferToNormalTexture(heightBuf, w, h, 2.35, anisotropy, repeatX, repeatY),
-    roughnessMap: finalizeTexture(roughCanvas, false, anisotropy, repeatX, repeatY),
+    roughnessMap: finalizeTexture(roughCanvas, false, anisotropy, repeatX, repeatY), // (asphalt: full size, its glints are the most visible thing on screen)
   };
 }
 
@@ -429,7 +440,7 @@ function buildStoneOrBrickSet(
   return {
     map: finalizeTexture(albedoC, true, anisotropy),
     normalMap: heightToNormalTexture(heightC, normalStrength, anisotropy),
-    roughnessMap: finalizeTexture(roughC, false, anisotropy),
+    roughnessMap: finalizeTexture(halfRes(roughC), false, anisotropy),
   };
 }
 
@@ -476,7 +487,7 @@ function buildFlutedConcreteSet(anisotropy: number): PBRTextureSet {
   return {
     map: finalizeTexture(albedoC, true, anisotropy),
     normalMap: heightToNormalTexture(heightC, 2.2, anisotropy),
-    roughnessMap: finalizeTexture(roughC, false, anisotropy),
+    roughnessMap: finalizeTexture(halfRes(roughC), false, anisotropy),
   };
 }
 
