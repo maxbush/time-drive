@@ -1,6 +1,7 @@
 import { FormEvent, useState } from 'react';
 import { Mail, Send } from 'lucide-react';
 import { CONTACT, UI } from '../content';
+import { ContactLinks } from './ContactLinks';
 
 type Status = 'idle' | 'sending' | 'sent' | 'error' | 'unconfigured';
 
@@ -20,6 +21,9 @@ export function ContactForm({
   const [contact, setContact] = useState('');
   const [message, setMessage] = useState('');
   const [status, setStatus] = useState<Status>('idle');
+
+  // No form key yet: show the direct contacts instead of a form that cannot send anything.
+  if (!CONTACT.web3formsKey) return <ContactLinks subject={subject} large={large} />;
 
   const tgHref = CONTACT.telegramUser
     ? `https://t.me/${CONTACT.telegramUser}?text=${encodeURIComponent(subject)}`

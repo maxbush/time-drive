@@ -90,11 +90,19 @@ function createSkyShaderMaterial(): THREE.ShaderMaterial {
         }
 
         if (dir.y > 0.25) {
-          vec2 starGrid = floor(dir.xz * 280.0 + dir.y * 95.0);
+          vec2 starCoord = dir.xz * 280.0 + dir.y * 95.0;
+          vec2 starGrid = floor(starCoord);
           float starSeed = hash21(starGrid);
           if (starSeed > 0.996) {
             float twinkle = 0.72 + 0.28 * sin(uTime * 2.1 + starSeed * 80.0);
-            sky += vec3(0.8, 0.88, 1.0) * smoothstep(0.25, 0.72, dir.y) * (0.42 + uDuskDepth * 0.38) * twinkle;
+            // A star used to fill its whole grid cell (a hard square). Now it is a small soft
+            // disc at a jittered spot inside the cell.
+            // (jitter + radius are chosen so the disc never reaches the cell edge: no clipped square)
+            vec2 jitter = (vec2(hash21(starGrid + 3.1), hash21(starGrid + 7.7)) - 0.5) * 0.24;
+            float sd = length(fract(starCoord) - 0.5 - jitter);
+            float disc = 1.0 - smoothstep(0.0, 0.36, sd);
+            disc *= disc;
+            sky += vec3(0.8, 0.88, 1.0) * disc * 1.7 * smoothstep(0.25, 0.72, dir.y) * (0.42 + uDuskDepth * 0.38) * twinkle;
           }
         }
 

@@ -5,6 +5,8 @@ import tailwindcss from '@tailwindcss/vite';
 export default defineConfig({
   base: './', // relative paths — works on GitHub Pages under any repo name
   plugins: [react(), tailwindcss()],
+  // local `vite preview` only: never let a browser reuse an old index.html between builds
+  preview: { headers: { 'Cache-Control': 'no-store' } },
   build: {
     rollupOptions: {
       output: {

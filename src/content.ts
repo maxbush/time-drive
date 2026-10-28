@@ -11,8 +11,8 @@ export const OWNER = {
 
 // Contact destinations. Empty string = that option is simply not shown.
 export const CONTACT = {
-  telegramUser: '', // TODO: ник в Telegram без @ (например "maxbush")
-  email: '', // TODO: почта для заявок
+  telegramUser: 'ktoetopishet', // без @
+  email: 'maxim.bushenko@gmail.com',
   // Free Web3Forms access key (https://web3forms.com, created with the email above).
   // When set, the form sends the request to that email; without it only the
   // Telegram / email buttons are shown.
@@ -61,26 +61,14 @@ export const SITES: SiteContent[] = [
   {
     id: 'albion',
     name: 'ALBION Consult',
-    kind: 'Образовательный консалтинг · Оксфорд',
+    kind: 'Консалтинг · Оксфорд · SEO',
     domain: 'maxbush.github.io/albion-mockups',
     url: 'https://maxbush.github.io/albion-mockups/albion-v2/ru/',
     description:
-      'Сайт-история для консалтинговой компании: маршрут семьи через британское образование в пять этапов, разделы услуг, гайды, цены, отзывы и анкета консультации. Акварельная графика и вдумчивая типографика.',
+      'Сайт консалтинговой компании из Оксфорда, собранный вместе с SEO-стратегией: маршрут поступления в пять этапов, разделы услуг, гайды, двуязычная структура и анкета консультации.',
     highlight: 'Параллакс в первом экране: слои акварели движутся с разной скоростью при прокрутке.',
     live: true,
     slides: [1, 2, 3, 4].map((n) => `./sites/albion-${n}.webp`),
-  },
-  {
-    id: 'lune',
-    name: 'LUNÉ Studio',
-    kind: 'Креативная студия · Дубай',
-    domain: 'maxbush.github.io/lune',
-    url: 'https://maxbush.github.io/lune/',
-    description:
-      'Сайт продакшн-студии для luxury-брендов: услуги, кампании, студии и интерактивный калькулятор съёмки, где формат, длительность и уровень ретуши сразу дают ориентир по стоимости.',
-    highlight: 'Калькулятор стоимости съёмки: выбор параметров пересчитывает пакет и цену.',
-    live: true,
-    slides: [1, 2, 3, 4].map((n) => `./sites/lune-${n}.webp`),
   },
   {
     id: 'grodno',
@@ -93,6 +81,18 @@ export const SITES: SiteContent[] = [
     highlight: 'Сайт тяжёлый из-за фотографий (около 12 МБ), поэтому живой просмотр включается по кнопке.',
     live: false,
     slides: [1, 2, 3, 4].map((n) => `./sites/grodno-${n}.webp`),
+  },
+  {
+    id: 'lune',
+    name: 'LUNÉ Studio',
+    kind: 'Креативная студия · Дубай',
+    domain: 'maxbush.github.io/lune',
+    url: 'https://maxbush.github.io/lune/',
+    description:
+      'Сайт продакшн-студии для luxury-брендов: услуги, кампании, студии и интерактивный калькулятор съёмки, где формат, длительность и уровень ретуши сразу дают ориентир по стоимости.',
+    highlight: 'Калькулятор стоимости съёмки: выбор параметров пересчитывает пакет и цену.',
+    live: true,
+    slides: [1, 2, 3, 4].map((n) => `./sites/lune-${n}.webp`),
   },
   {
     id: 'eca',
@@ -109,25 +109,26 @@ export const SITES: SiteContent[] = [
 export const PROJECTS: Record<ProjectId, ProjectContent> = {
   web: {
     index: '01',
-    tag: 'Сайты',
-    title: 'Последние сайты',
-    lead: 'Сайты для клиентов: свой дизайн, быстрая загрузка, аккуратная анимация.',
-    note: 'Показаны последние проекты, не все.',
+    tag: 'Сайты и SEO',
+    title: 'Сайты',
+    lead: 'Дизайн и разработка сайтов в одних руках: от макета до публикации.',
+    note: 'Четыре последних проекта.',
     description:
-      'Проектирую и разрабатываю сайты от идеи до запуска: собственный дизайн без шаблонов, быстрая загрузка, аккуратная анимация и адаптация под телефон. Ниже четыре последних проекта, каждый можно полистать прямо здесь.',
+      'Делаю сайты целиком: структура и дизайн, вёрстка, анимация, формы и калькуляторы, SEO и публикация.',
     points: [
       'Корпоративные сайты и лендинги',
       'Каталоги и сайты с бронированием',
-      'Интерактивные страницы: параллакс, калькуляторы, WebGL',
-      'Дизайн и разработка в одних руках',
+      'Анимация и интерактив: параллакс, калькуляторы, 3D',
+      'SEO: структура, семантика, тексты, техническая оптимизация',
+      'Адаптация под телефон, быстрая загрузка, публикация',
     ],
-    stack: ['Next.js', 'TypeScript', 'React', 'Tailwind CSS', 'Three.js'],
+    stack: ['Дизайн', 'Разработка', 'SEO'],
     side: 'right',
     demoSubject: 'Запрос: сайт',
     cta: 'Обсудить такой сайт',
     facts: [
       ['Формат', 'под ключ'],
-      ['Показано', '4 последних'],
+      ['Показано', '4 проекта'],
       ['Дизайн', 'авторский'],
     ],
     sites: SITES,
@@ -224,11 +225,11 @@ export const UI = {
   contact: 'Контакты',
   help: 'Управление',
   details: 'Подробнее',
-  viewSites: 'Смотреть сайты',
+  viewSites: 'Все сайты',
   viewLive: 'Живой сайт',
   viewShots: 'Скриншоты',
   partsTitle: 'Из чего состоит',
-  moreAbout: 'Подробнее',
+  moreAbout: 'Открыть',
   openSite: 'Открыть сайт',
   requestDemo: 'Запросить демо',
   next: 'Ехать дальше',

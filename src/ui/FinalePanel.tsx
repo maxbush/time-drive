@@ -1,5 +1,5 @@
 import { FINALE, UI } from '../content';
-import { ContactForm } from './ContactForm';
+import { ContactLinks } from './ContactLinks';
 
 const link =
   'border-b border-white/40 pb-0.5 font-mono text-[11px] uppercase tracking-[0.2em] text-white transition hover:border-sky-300 hover:text-sky-200';
@@ -32,7 +32,7 @@ export function FinalePanel({ onRestart }: { onRestart: () => void }) {
           <span className="text-sky-300">{UI.discuss}</span>
           <span className="h-px flex-1 bg-white/15" />
         </div>
-        <ContactForm subject="Обсудить проект" large />
+        <ContactLinks subject="Обсудить проект" large />
       </aside>
     </>
   );
