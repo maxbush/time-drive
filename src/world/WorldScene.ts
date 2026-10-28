@@ -170,7 +170,14 @@ export interface WorldTelemetry {
 // Also remembered across visits once the governor had to go all the way down.
 function probeWeakGpu(): boolean {
   try {
-    if (localStorage.getItem('td-weak') === '1') return true;
+    // The "weak" memory is a timestamp and expires after a week (it used to be a permanent "1": one
+    // bad session, e.g. a tab left in the background, branded a good machine for ever).
+    const saved = localStorage.getItem('td-weak');
+    if (saved) {
+      const age = Date.now() - Number(saved);
+      if (Number.isFinite(age) && age >= 0 && age < 7 * 24 * 3600 * 1000) return true;
+      localStorage.removeItem('td-weak'); // legacy "1" or expired
+    }
     const c = document.createElement('canvas');
     const gl = (c.getContext('webgl') || c.getContext('experimental-webgl')) as WebGLRenderingContext | null;
     if (!gl) return false;
@@ -225,6 +232,7 @@ export class WorldSceneEngine {
   private bloomScale = 1;
   private frameCap = 0; // 0 = uncapped, else target FPS
   private capStreak = 0;
+  private slowFrames = 0; // consecutive frames longer than half a second (background throttling)
   private fpsForced = false; // ?fps=… given: never auto-change the cap
   private paused = false;
   // DPR changes are queued and applied at the START of the next frame, right before
@@ -244,7 +252,6 @@ export class WorldSceneEngine {
   // Auto-Cruise is ON by default so the car drives itself and slows down at each project!
   private autoCruise = true;
   private duskDepth = 0.25;
-  private activeZoneId = WORLD_ZONES[0].id;
   private activeStation: ProjectStationId = null;
   private clearedStations = new Set<string>();
   private temporalFlash = 0;
@@ -347,6 +354,14 @@ export class WorldSceneEngine {
     }
     // Weak GPU (old Intel HD/UHD, software rendering): fewer lights, cheaper shadow filter,
     // FXAA instead of SMAA, half-res bloom, smaller reflection, no supersampling.
+    if (qParam === 'full') {
+      // ?quality=full: forget a remembered "weak" verdict and start in the full profile
+      try {
+        localStorage.removeItem('td-weak');
+      } catch {
+        /* private mode */
+      }
+    }
     this.weak = !this.mobile && (qParam === 'weak' || (!qParam && probeWeakGpu()));
     if (this.weak) {
       this.bloomScale = 0.5;
@@ -591,6 +606,7 @@ export class WorldSceneEngine {
     dom.addEventListener('pointerdown', this.handlePointerDown);
     window.addEventListener('pointermove', this.handlePointerMove);
     window.addEventListener('pointerup', this.handlePointerUp);
+    window.addEventListener('pointercancel', this.handlePointerUp);
     dom.addEventListener('wheel', this.handleWheel, { passive: false });
     // Phones can lose the GL context under memory pressure (shows up as a black flash).
     // Keep the page alive and reload cleanly if the browser restores it.
@@ -671,7 +687,6 @@ export class WorldSceneEngine {
 
   public jumpToZone(zoneId: string, instant = false) {
     const z = WORLD_ZONES.find((item) => item.id === zoneId) || WORLD_ZONES[0];
-    this.activeZoneId = z.id;
     this.trans.reset();
     this.fireTrails?.reset();
     this.vehicle.setPose(z.x, z.z, 0, z.y ?? 0, z.pitch ?? 0);
@@ -941,9 +956,12 @@ export class WorldSceneEngine {
       this.pendingDpr = null;
     }
     const rawDt = (now - this.lastPerfTime) * 0.001;
-    const dt = Math.min(rawDt, 0.05);
+    const dt = Math.min(rawDt, 0.05); // governor / easing clock
+    // The simulation clock follows real time up to 0.1 s per frame (it used to stop at 0.05 s, so
+    // below 20 fps the whole journey ran in slow motion: at 12 fps it took 1.7x as long)
+    const simDt = Math.min(rawDt, 0.1);
     this.lastPerfTime = now;
-    this.elapsedTime += dt;
+    this.elapsedTime += simDt;
 
     // Compute automatic station slowdown & brief trigger
     const zPos = this.vehicle.position.z;
@@ -1003,7 +1021,7 @@ export class WorldSceneEngine {
     const atProject = this.activeStation !== null && this.activeStation !== 'space';
     this.stationBlend += ((atProject ? 1 : 0) - this.stationBlend) * (1 - Math.exp(-1.0 * dt));
 
-    this.trans.update(dt, zPos, yPos, this.vehicle.speed);
+    this.trans.update(simDt, zPos, yPos, this.vehicle.speed);
     const tr = this.trans.state;
     this.temporalFlash = tr.flash;
     this.flashKind = tr.flash > 0.02 ? tr.kind : null;
@@ -1023,7 +1041,7 @@ export class WorldSceneEngine {
     this.bloomPass.strength =
       this.bloomBase + tr.flash * (0.9 - 0.6 * tr.flashEdge) + tr.warp * 0.12;
     // Hit-stop: the simulation (car + camera) runs on scaled time, UI/fps on real time.
-    const sdt = dt * tr.timeScale;
+    const sdt = simDt * tr.timeScale;
 
     // Space approach: strip the expensive passes BEFORE the launch, not at it.
     // Past z≈-435 the city is behind the camera anyway — hide world, kill the
@@ -1057,7 +1075,11 @@ export class WorldSceneEngine {
     const spaceFactor = THREE.MathUtils.clamp((yPos - 5) / 55 + (-442 - zPos) / 35, 0, 1);
 
     this.renderer.info.reset();
-    this.vehicle.update(sdt, this.input, this.autoCruise, slowdownFactor, tr.cruiseBoost);
+    // (long frames are split so the car's physics keep small, stable steps)
+    const steps = Math.max(1, Math.ceil(sdt / 0.034));
+    for (let s = 0; s < steps; s++) {
+      this.vehicle.update(sdt / steps, this.input, this.autoCruise, slowdownFactor, tr.cruiseBoost);
+    }
     this.treeLod?.update(this.vehicle.position.z);
     this.fireTrails.update(
       this.elapsedTime,
@@ -1081,7 +1103,6 @@ export class WorldSceneEngine {
     }
 
     const curZone = this.resolveCurrentZone(this.vehicle.position.z, this.vehicle.position.y);
-    this.activeZoneId = curZone.id;
 
     // Zone-tuned exposure: brighter warm dusk in Act I, cooler in the city,
     // deeper in space — same ACES curve, zero frame cost.
@@ -1151,7 +1172,20 @@ export class WorldSceneEngine {
     }
 
     // Adaptive resolution: scale pixel ratio to hold ~60fps.
-    this.dprTimer += dt;
+    // A hidden / occluded / throttled tab renders about one frame per second. That says nothing about
+    // the GPU, so the governor must not read it as "slow": it pauses and forgets its streaks (it used
+    // to walk through every quality step in a background tab and then save "weak" for good).
+    this.slowFrames = rawDt > 0.5 ? this.slowFrames + 1 : 0;
+    const throttled = document.hidden || rawDt > 0.5 || this.slowFrames >= 3;
+    if (throttled) {
+      this.dprTimer = 0;
+      this.dipStreak = 0;
+      this.upStreak = 0;
+      this.lowStreak = 0;
+      this.capStreak = 0;
+    } else {
+      this.dprTimer += dt;
+    }
     // (checked faster during the first seconds, so a weak machine settles quickly instead of
     // crawling at 20 fps for the whole opening street)
     if (this.dprTimer >= (this.elapsedTime < 25 ? 1.2 : 2) && this.frameCounter > 30 && !(zPos < -380 || yPos > 5)) {
@@ -1214,7 +1248,7 @@ export class WorldSceneEngine {
         // Every step taken and still slow: remember it, the next visit starts in the weak profile
         this.weakSaved = true;
         try {
-          localStorage.setItem('td-weak', '1');
+          localStorage.setItem('td-weak', String(Date.now()));
         } catch {
           /* private mode */
         }
@@ -1267,7 +1301,16 @@ export class WorldSceneEngine {
     });
   }
 
+  private pointers = new Map<number, { x: number; y: number }>();
+  private pinchPrev = 0;
+  private pinchDist() {
+    const [a, b] = [...this.pointers.values()];
+    return Math.hypot(a.x - b.x, a.y - b.y);
+  }
+
   private handlePointerDown = (e: PointerEvent) => {
+    this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (this.pointers.size === 2) this.pinchPrev = this.pinchDist();
     this.isPointerDown = true;
     this.recenterCam = false;
     this.lastPointerX = e.clientX;
@@ -1275,6 +1318,16 @@ export class WorldSceneEngine {
   };
 
   private handlePointerMove = (e: PointerEvent) => {
+    if (this.pointers.has(e.pointerId)) this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (this.pointers.size >= 2) {
+      // two fingers: pinch = zoom (the wheel's counterpart on a touch screen), no orbiting
+      const d = this.pinchDist();
+      if (this.pinchPrev > 0 && d > 0) {
+        this.userZoom = THREE.MathUtils.clamp(this.userZoom * (this.pinchPrev / d), 0.55, 2.2);
+      }
+      this.pinchPrev = d;
+      return;
+    }
     if (!this.isPointerDown) return;
     const dx = e.clientX - this.lastPointerX;
     const dy = e.clientY - this.lastPointerY;
@@ -1285,8 +1338,16 @@ export class WorldSceneEngine {
     this.orbitPitch = THREE.MathUtils.clamp(this.orbitPitch + dy * 0.0045, 0.04, 1.05);
   };
 
-  private handlePointerUp = () => {
-    this.isPointerDown = false;
+  private handlePointerUp = (e: PointerEvent) => {
+    this.pointers.delete(e.pointerId);
+    if (this.pointers.size < 2) this.pinchPrev = 0;
+    if (this.pointers.size === 1) {
+      // one finger stays after a pinch: continue orbiting from where it is, without a jump
+      const p = [...this.pointers.values()][0];
+      this.lastPointerX = p.x;
+      this.lastPointerY = p.y;
+    }
+    if (this.pointers.size === 0) this.isPointerDown = false;
   };
 
   // The wheel only zooms the camera (closer / further), in every mode; it never moves the car.
@@ -1519,6 +1580,7 @@ export class WorldSceneEngine {
     window.removeEventListener('keyup', this.handleKeyUp);
     window.removeEventListener('pointermove', this.handlePointerMove);
     window.removeEventListener('pointerup', this.handlePointerUp);
+    window.removeEventListener('pointercancel', this.handlePointerUp);
     this.reflectRT.dispose();
     this.composer.dispose();
     this.renderer.dispose();

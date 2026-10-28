@@ -10,7 +10,17 @@ import { ContactPanel } from './ui/ContactPanel';
 import { FinalePanel } from './ui/FinalePanel';
 import { RotateHint } from './ui/RotateHint';
 import { DevPanel } from './ui/DevPanel';
+import { SimpleSite, SimpleReason } from './ui/SimpleSite';
 import { STAND_BY_PROJECT } from './world/standSpecs';
+
+function webglSupported(): boolean {
+  try {
+    const c = document.createElement('canvas');
+    return !!(c.getContext('webgl2') || c.getContext('webgl'));
+  } catch {
+    return false;
+  }
+}
 
 const query = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : new URLSearchParams();
 
@@ -22,6 +32,10 @@ export default function App() {
   const debugMode = query.has('debug');
   const devMode = query.has('dev');
   const [hudVisible, setHudVisible] = useState(!debugMode);
+  // The plain version replaces the 3D world when it cannot run (no WebGL, a crash) or on request.
+  const [simple, setSimple] = useState<SimpleReason | null>(() =>
+    query.has('simple') ? 'manual' : webglSupported() ? null : 'nowebgl'
+  );
   const [loading, setLoading] = useState(true);
   const [loadPct, setLoadPct] = useState(0);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -99,21 +113,28 @@ export default function App() {
 
   useEffect(() => {
     const el = containerRef.current;
-    if (!el) return;
+    if (!el || simple) return;
 
     let cancelled = false;
     let t1 = 0;
     let t2 = 0;
     const boot = () => {
     if (cancelled) return;
-    const engine = new WorldSceneEngine(
+    let engine: WorldSceneEngine;
+    try {
+      engine = new WorldSceneEngine(
       el,
       (data) => setTelemetry(data),
       (p) => setLoadPct(Math.round(p * 100))
-    );
+      );
+    } catch (err) {
+      console.error('[TimeDrive] could not start the 3D world', err);
+      setSimple('error');
+      return;
+    }
     engineRef.current = engine;
     engine.setPaused(pausedRef.current);
-    engine.ready.then(() => setLoading(false));
+    engine.ready.then(() => setLoading(false)).catch(() => setSimple('error'));
     let lastFlashKind: 'jump' | 'launch' | null = null;
     engine.onFlash = (v, kind) => {
       if (flashRef.current) flashRef.current.style.opacity = String(v);
@@ -212,19 +233,32 @@ export default function App() {
 
   // The wide sites panel covers the right half: slide the 3D view into the free left part
   // so the stand and the car stay visible (the narrow drawers sit over empty road).
+  // the panel's share of the screen changes with the window size / a phone turning round
+  const [viewport, setViewport] = useState(() => window.innerWidth * 10000 + window.innerHeight);
+  useEffect(() => {
+    const on = () => setViewport(window.innerWidth * 10000 + window.innerHeight);
+    window.addEventListener('resize', on);
+    return () => window.removeEventListener('resize', on);
+  }, []);
   const panelOpen = drawerOpen && !!activeProject && hudVisible;
   const panelDir = activeProject?.side === 'left' ? -1 : 1; // the panel sits opposite the stand
   useEffect(() => {
     const vw = window.innerWidth;
     const panel = Math.min(680, vw * (window.innerHeight <= 480 ? 0.52 : 0.5));
     engineRef.current?.setPanelShift(panelOpen ? panelDir * (panel / vw / 2) * 0.82 : 0);
-  }, [panelOpen, panelDir]);
+  }, [panelOpen, panelDir, viewport]);
 
   const progressPct = Math.max(
     0,
     Math.min(100, ((320 - telemetry.zPos + telemetry.yPos) / (320 - -580)) * 100)
   );
 
+  // "Simple version": stop the 3D world completely (it may be struggling) and show the plain page
+  const openSimple = () => {
+    engineRef.current?.dispose();
+    engineRef.current = null;
+    setSimple('manual');
+  };
   const openContact = (subject: string) => setContact({ open: true, subject });
   const engine = () => engineRef.current;
   const chIdx = Math.max(0, CHAPTERS.findIndex((c) => c.id === telemetry.activeZoneId));
@@ -233,10 +267,27 @@ export default function App() {
   const driving = telemetry.speedKmh > 8 && station === null && !drawerOpen && !showFinale && !hudAwake && !hudIntro;
   const chromeFade = `transition-opacity duration-700 ${driving ? 'opacity-25' : 'opacity-100'}`;
 
+  if (simple) {
+    return (
+      <SimpleSite
+        reason={simple}
+        onTry3d={() => {
+          const u = new URL(window.location.href);
+          u.searchParams.delete('simple');
+          window.location.href = u.toString();
+        }}
+      />
+    );
+  }
+
   return (
     <div className="relative h-full w-full select-none overflow-hidden bg-[#05070b]">
       {/* 3D WebGL canvas */}
-      <div ref={containerRef} className="h-full w-full cursor-grab active:cursor-grabbing" />
+      <div
+        ref={containerRef}
+        className="h-full w-full cursor-grab active:cursor-grabbing"
+        style={{ touchAction: 'none' }} // the world handles drag and pinch itself
+      />
 
       {/* Cinematic vignette — pure CSS, zero GL cost */}
       <div
@@ -248,7 +299,7 @@ export default function App() {
         }}
       />
 
-      <Loader visible={loading} pct={loadPct} />
+      <Loader visible={loading} pct={loadPct} onSimple={openSimple} />
       {showRotate && <RotateHint onContinue={() => setPortraitOk(true)} />}
 
       {/* Time-jump / launch flash. The white-out itself is drawn in the WebGL post pass

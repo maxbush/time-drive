@@ -599,7 +599,6 @@ export function createVehicleController(
       wheelPivots.push({ pivot, r });
     }
   };
-  const spinAxis = new THREE.Vector3();
 
   const loadCarModel = (id: CarModelId) => {
     const cached = loadedModels.get(id);
@@ -747,8 +746,6 @@ export function createVehicleController(
   let prevSpeed = 0;
   let brakeGlow = 0;
   let exhaustTime = 0;
-  const prevPos = new THREE.Vector3();
-  const tmpV = new THREE.Vector3();
 
   return {
     root,

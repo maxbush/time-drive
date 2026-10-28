@@ -42,6 +42,7 @@ export function ChapterBar({
       <div className="pointer-events-auto flex items-end gap-5">
         <button
           onClick={onToggle}
+          aria-label={atStation ? UI.next : autoCruise ? 'Пауза' : 'Продолжить'}
           className={`shrink-0 transition ${
             atStation
               ? `border-b border-amber-300 pb-0.5 font-mono text-[11px] uppercase tracking-[0.2em] text-amber-200 hover:text-white ${

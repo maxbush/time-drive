@@ -7,7 +7,14 @@ import { OWNER, UI } from '../content';
 // opacity animation: those run on the compositor and do not freeze with JavaScript. That is the
 // idling needle, the scrolling road dashes, the drifting grid and the pulsing glow. Only the
 // number and the arc are updated from JS (10 times a second, smoothed toward real progress).
-export function Loader({ visible, pct }: { visible: boolean; pct: number }) {
+export function Loader({ visible, pct, onSimple }: { visible: boolean; pct: number; onSimple?: () => void }) {
+  // After a while on a slow device offer the plain version instead of making people wait
+  const [slow, setSlow] = useState(false);
+  useEffect(() => {
+    if (!visible) return;
+    const t = window.setTimeout(() => setSlow(true), 9000);
+    return () => window.clearTimeout(t);
+  }, [visible]);
   const [speed, setSpeed] = useState(0);
   const speedRef = useRef(0);
   const pctRef = useRef(pct);
@@ -172,6 +179,14 @@ export function Loader({ visible, pct }: { visible: boolean; pct: number }) {
           <span>{pct >= 100 ? UI.stageWarm : UI.stageCar}</span>
           <span>...</span>
         </div>
+        {slow && onSimple && (
+          <button
+            onClick={onSimple}
+            className="mt-5 border-b border-white/30 pb-0.5 font-mono text-[10px] uppercase tracking-[0.2em] text-slate-300 transition hover:border-amber-300 hover:text-amber-200"
+          >
+            Долго грузится? Открыть простую версию →
+          </button>
+        )}
       </div>
     </div>
   );

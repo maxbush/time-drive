@@ -443,8 +443,6 @@ function buildAuthoredBuilding(b: ArchitectureBuilder, spec: BuildingSpec) {
   if (spec.roofProps) {
     const roadFace = spec.activeFaces[0]?.facing ?? '+X';
     const axis = getFacadeAxis(roadFace);
-    const edgeX = roadFace === '+X' ? spec.xMax : roadFace === '-X' ? spec.xMin : cx;
-    const edgeZ = roadFace === '+Z' ? spec.zMax : roadFace === '-Z' ? spec.zMin : cz;
 
     if (spec.roofProps.waterTower) {
       const tx = cx - axis.nx * sx * 0.16;
