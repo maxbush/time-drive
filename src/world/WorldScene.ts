@@ -1360,7 +1360,10 @@ export class WorldSceneEngine {
       // Phones never go below 1.5 (below that the image turns to mush).
       const floor = this.mobile ? 1.5 : this.dprFloor;
       const DPR_STEPS = [0.8, 1.0, 1.25, 1.5, 1.75, 2.0].filter((s) => s >= floor);
-      const target = this.frameCap || 60; // fps we are trying to hold
+      // fps we are trying to hold. A weak machine that has already given up reflections and bloom (tier 3) is
+      // judged against 30: a laptop with an integrated GPU does hold ~30 there, and further steps (no building
+      // shadows, 0.8x) cost visible sharpness for little. It is only pushed lower if it falls to ~20.
+      const target = this.frameCap || (this.weak && this.qualityTier >= 3 ? 30 : 60);
       let next = this.currentDpr;
       const cur = DPR_STEPS.reduce((a, b) => (Math.abs(b - next) < Math.abs(a - next) ? b : a));
       const native = window.devicePixelRatio || 1;
@@ -1456,7 +1459,9 @@ export class WorldSceneEngine {
   }
 
   private applyQualityTier(tier: number) {
-    if (tier >= 5) this.rememberWeak(tier);
+    // (a machine already judged weak settles at tier 3 and that is remembered; a machine that is not weak is only
+    // remembered if it had to go all the way to 5)
+    if (tier >= 5 || (this.weak && tier >= 3)) this.rememberWeak(tier);
     if (tier === 1) {
       this.dprCap = 1.0;
       this.pendingDpr = 1.0; // applied (and clamped to the cap) at the start of the next frame
