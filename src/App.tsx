@@ -380,6 +380,7 @@ export default function App() {
               onClose={() => setDrawerOpen(false)}
               onLive={setLiveView}
               schema={station ? STAND_BY_PROJECT[station] : undefined}
+              lowEnd={engineRef.current?.lowEnd ?? false}
               onCta={() => openContact(activeProject.demoSubject)}
             />
           )}

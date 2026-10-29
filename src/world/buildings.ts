@@ -99,6 +99,9 @@ function addOrientedBox(
 // balconies, no roof props). The facades keep their piers, floor bands, glazing quads, signs and canopies, so the street
 // reads the same from the road; it is a third of the geometry. Set by buildWorldArchitecture(lite).
 let LITE = false;
+// the tall dark second row behind the shopfronts (ids act1-bg*) is only a skyline on a weak device: no piers, no bands,
+// just the mass and the lit windows
+let BARE = false;
 
 function buildStorefrontInteriorAndFacade(
   b: ArchitectureBuilder,
@@ -256,29 +259,32 @@ function buildUpperFacadeWall(
   const winH = spec.floorH * spec.windowRatioH;
   const spandrelH = spec.floorH - winH;
 
-  addOrientedBox(b, spec.wallMat, faceOriginX, baseY, faceOriginZ, axis, -faceLength / 2 + cornerPierW / 2, sectionH / 2, -0.45, cornerPierW, sectionH, 0.92);
-  addOrientedBox(b, spec.wallMat, faceOriginX, baseY, faceOriginZ, axis, faceLength / 2 - cornerPierW / 2, sectionH / 2, -0.45, cornerPierW, sectionH, 0.92);
+  if (!BARE) {
+    addOrientedBox(b, spec.wallMat, faceOriginX, baseY, faceOriginZ, axis, -faceLength / 2 + cornerPierW / 2, sectionH / 2, -0.45, cornerPierW, sectionH, 0.92);
+    addOrientedBox(b, spec.wallMat, faceOriginX, baseY, faceOriginZ, axis, faceLength / 2 - cornerPierW / 2, sectionH / 2, -0.45, cornerPierW, sectionH, 0.92);
 
-  for (let i = 0; i <= bays; i++) {
-    const px = -usableW / 2 + i * bayW;
-    addOrientedBox(b, spec.wallMat, faceOriginX, baseY, faceOriginZ, axis, px, sectionH / 2, -0.43, pierW, sectionH, 0.9);
+    for (let i = 0; i <= bays; i++) {
+      const px = -usableW / 2 + i * bayW;
+      addOrientedBox(b, spec.wallMat, faceOriginX, baseY, faceOriginZ, axis, px, sectionH / 2, -0.43, pierW, sectionH, 0.9);
 
-    if (spec.verticalFins) {
-      addOrientedBox(
-        b,
-        spec.style === 'fluted-gallery' ? 'flutedConcrete' : spec.trimMat,
-        faceOriginX,
-        baseY,
-        faceOriginZ,
-        axis,
-        px,
-        sectionH / 2,
-        0.24,
-        0.24,
-        sectionH - 0.2,
-        0.58
-      );
+      if (spec.verticalFins) {
+        addOrientedBox(
+          b,
+          spec.style === 'fluted-gallery' ? 'flutedConcrete' : spec.trimMat,
+          faceOriginX,
+          baseY,
+          faceOriginZ,
+          axis,
+          px,
+          sectionH / 2,
+          0.24,
+          0.24,
+          sectionH - 0.2,
+          0.58
+        );
+      }
     }
+
   }
 
   const normalVec = new THREE.Vector3(axis.nx, 0, axis.nz);
@@ -356,6 +362,7 @@ function buildUpperFacadeWall(
     }
   }
 
+  if (BARE) return;
   for (let f = 1; f < numFloors; f++) {
     const bandY = baseY + f * spec.floorH;
     addOrientedBox(b, spec.trimMat, faceOriginX, bandY, faceOriginZ, axis, 0, 0.0, -0.1, faceLength - 0.6, 0.13, 0.56);
@@ -368,6 +375,7 @@ function buildUpperFacadeWall(
 }
 
 function buildAuthoredBuilding(b: ArchitectureBuilder, spec: BuildingSpec) {
+  BARE = LITE && spec.id.startsWith('act1-bg');
   const rng = mulberry32(spec.seed);
   const cx = (spec.xMin + spec.xMax) * 0.5;
   const cz = (spec.zMin + spec.zMax) * 0.5;

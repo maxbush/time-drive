@@ -573,7 +573,7 @@ export class WorldSceneEngine {
     const params0 = new URLSearchParams(window.location.search);
     const compileA = params0.has('noasync') ? Promise.resolve() : this.precompileAsync();
 
-    const archResult = await buildWorldArchitecture(palette, texLib.maxAnisotropy, () => WorldSceneEngine.breathe(), this.weak);
+    const archResult = await buildWorldArchitecture(palette, texLib.maxAnisotropy, () => WorldSceneEngine.breathe(), this.weak || this.mobile);
     if (this.disposed) return;
     this.archGroup = archResult.group;
     this.scene.add(this.archGroup);
@@ -594,8 +594,8 @@ export class WorldSceneEngine {
       // leaves are alpha-tested double-sided quads: the costliest thing in the shadow pass
       {
         leafShadows: !this.weak && !this.mobile,
-        nearRadius: this.weak || this.mobile ? 70 : 95,
-        cullRadius: this.weak || this.mobile ? 480 : 680,
+        nearRadius: this.weak || this.mobile ? 55 : 95,
+        cullRadius: this.weak || this.mobile ? 400 : 680,
       }
     ).then((lod) => {
       this.treeLod = lod;
@@ -1347,7 +1347,7 @@ export class WorldSceneEngine {
       this.sharpPass.uniforms.uSharp.value = this.sharpCur;
     }
     this.vehicle.setShadowProxyVisible(shadowNow);
-    if (this.weak && (this.frameCounter & 7) === 0) this.updateDistanceCull();
+    if ((this.weak || this.mobile) && (this.frameCounter & 7) === 0) this.updateDistanceCull();
     this.composer.render();
 
     this.frameCounter++;

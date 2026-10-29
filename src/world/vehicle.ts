@@ -5,6 +5,9 @@ import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment
 
 export type CarModelId = 'bttf';
 
+// Weak devices load a version with 40% fewer triangles (145k instead of 237k): the facets show in the highlights up
+// close, which is a fair price for a laptop with an integrated GPU.
+const LITE_CAR_FILE = './models/bttf_delorean_lite.glb';
 const CAR_FILES: Record<CarModelId, string> = {
   bttf: './models/bttf_delorean_mobile.glb',
 };
@@ -676,7 +679,7 @@ export function createVehicleController(
     }
 
     loader.load(
-      CAR_FILES[id],
+      opts.weak ? LITE_CAR_FILE : CAR_FILES[id],
       (gltf) => {
         const model = gltf.scene;
         const bounds = new THREE.Box3().setFromObject(model);

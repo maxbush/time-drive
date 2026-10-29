@@ -27,7 +27,23 @@
     <meta name="twitter:image" content="https://maxbush.github.io/time-drive/og.jpg" />
     <!--JSON_LD-->
     <!-- start the big downloads right away, in parallel with the JS bundle -->
-    <link rel="preload" href="./models/bttf_delorean_mobile.glb" as="fetch" crossorigin="anonymous" />
+    <script>
+      // The car's model is the biggest download: start it now, in parallel with the script. A machine that was judged
+      // weak in the last week gets the lighter model (the same choice the app makes), the others the full one.
+      (function () {
+        var weak = false;
+        try {
+          var t = Number(localStorage.getItem('td-weak'));
+          weak = t > 0 && Date.now() - t < 7 * 24 * 3600 * 1000;
+        } catch (e) {}
+        var l = document.createElement('link');
+        l.rel = 'preload';
+        l.as = 'fetch';
+        l.crossOrigin = 'anonymous';
+        l.href = weak ? './models/bttf_delorean_lite.glb' : './models/bttf_delorean_mobile.glb';
+        document.head.appendChild(l);
+      })();
+    </script>
     <link rel="preload" href="./models/tree_elm.glb" as="fetch" crossorigin="anonymous" />
     <link rel="preload" href="./models/bttf_delorean_shadow_v2.glb" as="fetch" crossorigin="anonymous" />
     <!--FONT_PRELOAD-->

@@ -18,7 +18,9 @@ export function ProjectDrawer({
   onCta,
   onLive,
   schema,
+  lowEnd = false,
 }: {
+  lowEnd?: boolean; // weak device: the scheme image is drawn smaller (about 250 ms of main-thread work at 2.4x on a laptop)
   schema?: StandOptions;
   project: ProjectContent;
   onClose: () => void;
@@ -54,7 +56,7 @@ export function ProjectDrawer({
       // after the panel's slide-in, so drawing the big image never stutters the animation
       timer = window.setTimeout(() => {
         if (dead) return;
-        renderStandImageAsync(schema, 2.4)
+        renderStandImageAsync(schema, lowEnd ? 1.5 : 2.4)
           .then((u) => {
             url = u;
             if (dead) URL.revokeObjectURL(u);
