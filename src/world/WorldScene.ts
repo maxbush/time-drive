@@ -9,6 +9,7 @@ import { FXAAShader } from 'three/examples/jsm/shaders/FXAAShader.js';
 import { createSharpenPass } from './sharpen';
 import { TransitionDirector, createTransitionPass, TRANSITION_TUNING } from './transitions';
 import { createFireTrails, FireTrails } from './fireTrails';
+import { CHAPTERS } from '../content';
 import { createTextureLibrary } from './textures';
 import { createMaterialPalette } from './materials';
 import { createEnvironment, EnvironmentSystem } from './environment';
@@ -1718,24 +1719,16 @@ export class WorldSceneEngine {
           this.setCameraMode(next);
         }
         break;
+      // 1-5: the chapters of the bottom strip, in the same order (the gate is not a chapter)
       case 'Digit1':
-        if (!e.repeat) this.jumpToZone(WORLD_ZONES[0].id);
-        break;
       case 'Digit2':
-        if (!e.repeat) this.jumpToZone(WORLD_ZONES[1].id);
-        break;
       case 'Digit3':
-        if (!e.repeat) this.jumpToZone(WORLD_ZONES[2].id);
-        break;
       case 'Digit4':
-        if (!e.repeat) this.jumpToZone(WORLD_ZONES[3].id);
+      case 'Digit5': {
+        const ch = CHAPTERS[Number(e.code.slice(5)) - 1];
+        if (!e.repeat && ch) this.jumpToZone(ch.id);
         break;
-      case 'Digit5':
-        if (!e.repeat) this.jumpToZone(WORLD_ZONES[4].id);
-        break;
-      case 'Digit6':
-        if (!e.repeat) this.jumpToZone(WORLD_ZONES[5].id);
-        break;
+      }
     }
   };
 

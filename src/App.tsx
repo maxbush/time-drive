@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { WORLD_ZONES, WorldSceneEngine, WorldTelemetry } from './world/WorldScene';
-import { CHAPTERS, PROJECTS, ProjectId, SITES } from './content';
+import { CHAPTERS, CHAPTER_OF_ZONE, PROJECTS, ProjectId, SITES } from './content';
 import { Loader } from './ui/Loader';
 import { TopBar } from './ui/TopBar';
 import { ChapterBar } from './ui/ChapterBar';
@@ -278,7 +278,8 @@ export default function App() {
 
   const openContact = (subject: string) => setContact({ open: true, subject });
   const engine = () => engineRef.current;
-  const chIdx = Math.max(0, CHAPTERS.findIndex((c) => c.id === telemetry.activeZoneId));
+  const chapterId = CHAPTER_OF_ZONE[telemetry.activeZoneId] ?? telemetry.activeZoneId;
+  const chIdx = Math.max(0, CHAPTERS.findIndex((c) => c.id === chapterId));
   const chapter = `Глава ${String(chIdx + 1).padStart(2, '0')} · ${CHAPTERS[chIdx].label}`;
   // Cinematic HUD: chrome dims to a whisper while the car is moving, full at stops.
   const driving = telemetry.speedKmh > 8 && station === null && !drawerOpen && !showFinale && !hudAwake && !hudIntro;
@@ -389,7 +390,7 @@ export default function App() {
 
           <div className={chromeFade}>
             <ChapterBar
-              activeId={telemetry.activeZoneId}
+              activeId={chapterId}
               progressPct={progressPct}
               atStation={station !== null}
               finale={showFinale}

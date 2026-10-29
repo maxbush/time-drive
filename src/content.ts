@@ -208,12 +208,16 @@ export const PROJECTS: Record<ProjectId, ProjectContent> = {
 };
 export const CHAPTERS: { id: string; label: string }[] = [
   { id: 'act1-web20', label: 'Прошлое' },
-  { id: 'ribbed-gate', label: 'Прыжок' },
   { id: 'cluster1-web', label: 'Веб' },
   { id: 'cluster2-albion', label: 'Albion' },
   { id: 'cluster3-tenders', label: 'Тендеры' },
-  { id: 'act3-space', label: 'Космос' },
+  { id: 'act3-space', label: 'Финал' },
 ];
+
+// The jump through the gate is an effect, not a stop: while the car is in its zone the header and the
+// bottom strip show the chapter it belongs to. The number keys 1-5 jump to the chapters in this order.
+export const CHAPTER_OF_ZONE: Record<string, string> = { 'ribbed-gate': 'act1-web20' };
+
 
 export const FINALE = {
   // EN (later): "Let's drive into future"
