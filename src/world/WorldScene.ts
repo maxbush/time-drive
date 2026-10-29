@@ -11,6 +11,7 @@ import { TransitionDirector, createTransitionPass, TRANSITION_TUNING } from './t
 import { createFireTrails, FireTrails } from './fireTrails';
 import { CHAPTERS } from '../content';
 import { createTextureLibrary } from './textures';
+import { setStandScale } from './standTexture';
 import { createMaterialPalette } from './materials';
 import { createEnvironment, EnvironmentSystem } from './environment';
 import { buildGrandAvenue, AvenueSystem } from './avenue';
@@ -538,6 +539,10 @@ export class WorldSceneEngine {
       await WorldSceneEngine.breathe();
     };
 
+    {
+      const q = parseFloat(new URLSearchParams(window.location.search).get('bs') ?? '');
+      setStandScale(Number.isFinite(q) ? q : this.weak || this.mobile ? 1.5 : 2);
+    }
     const texLib = await createTextureLibrary(this.renderer, this.weak ? 8 : 16, () => WorldSceneEngine.breathe(), this.weak || this.mobile);
     if (this.disposed) return;
     const palette = createMaterialPalette(texLib, { mobile: this.mobile });

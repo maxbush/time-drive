@@ -5,6 +5,13 @@ import { mergeIntoChunks } from './chunkedMerge';
 import { createPastRoadSignTexture, createSignageTexture } from './textures';
 import { createStandTexture, StandDiagram } from './standTexture';
 
+// The boards of the stops are read from a distance: sample a sharper mip level than the default (the
+// board is flat and faces the camera, so the extra sharpness costs nothing visible in shimmer).
+const BOARD_LOD_BIAS = (() => {
+  const v = parseFloat(new URLSearchParams(window.location.search).get('bb') ?? '');
+  return Number.isFinite(v) ? v : -0.6;
+})();
+
 export type MatKey =
   | 'limestone'
   | 'paleLimestone'
@@ -351,6 +358,18 @@ export class ArchitectureBuilder {
           roughness: 0.18,
           metalness: 0.2,
         });
+    if (!customMap && BOARD_LOD_BIAS !== 0) {
+      const b = BOARD_LOD_BIAS.toFixed(2);
+      mat.onBeforeCompile = (shader) => {
+        shader.fragmentShader = shader.fragmentShader
+          .replace('#include <map_fragment>', THREE.ShaderChunk.map_fragment.replace('texture2D( map, vMapUv )', `texture2D( map, vMapUv, ${b} )`))
+          .replace(
+            '#include <emissivemap_fragment>',
+            THREE.ShaderChunk.emissivemap_fragment.replace('texture2D( emissiveMap, vEmissiveMapUv )', `texture2D( emissiveMap, vEmissiveMapUv, ${b} )`)
+          );
+      };
+      mat.customProgramCacheKey = () => 'boardlod' + b;
+    }
     const mesh = new THREE.Mesh(new THREE.PlaneGeometry(width, height), mat);
     mesh.position.set(cx, cy, cz);
     mesh.rotation.y = rotY;

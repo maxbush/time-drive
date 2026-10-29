@@ -211,7 +211,13 @@ export function renderStandImage(opts: StandOptions, scale = 2.4): string {
   return url;
 }
 
-export function createStandTexture(opts: StandOptions, anisotropy = 8, scale = SCALE): THREE.CanvasTexture {
+/** Resolution of the boards in the scene (the panel's own image is drawn separately, larger). */
+let standScale = SCALE;
+export function setStandScale(s: number) {
+  standScale = s;
+}
+
+export function createStandTexture(opts: StandOptions, anisotropy = 8, scale = standScale): THREE.CanvasTexture {
   const canvas = document.createElement('canvas');
   canvas.width = DW * scale;
   canvas.height = DH * scale;
