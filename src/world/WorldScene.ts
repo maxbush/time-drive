@@ -169,11 +169,11 @@ export interface WorldTelemetry {
 // Integrated / software GPUs (old Intel HD/UHD, SwiftShader ...) get the lighter "weak" profile
 // from the first frame instead of crawling at 15-20 fps until the governor has stepped down.
 // Also remembered across visits once the governor had to go all the way down.
-function probeWeakGpu(): boolean {
+function probeWeakGpu(useMemory = true): boolean {
   try {
     // The "weak" memory is a timestamp and expires after a week (it used to be a permanent "1": one
     // bad session, e.g. a tab left in the background, branded a good machine for ever).
-    const saved = localStorage.getItem('td-weak');
+    const saved = useMemory ? localStorage.getItem('td-weak') : null;
     if (saved) {
       const age = Date.now() - Number(saved);
       if (Number.isFinite(age) && age >= 0 && age < 7 * 24 * 3600 * 1000) return true;
@@ -186,7 +186,8 @@ function probeWeakGpu(): boolean {
     const ext = gl.getExtension('WEBGL_debug_renderer_info');
     const name = ext ? String(gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)) : '';
     gl.getExtension('WEBGL_lose_context')?.loseContext();
-    return /Intel\(R\)\s*(HD|UHD)|Intel HD|\bGMA\b|SwiftShader|llvmpipe|Basic Render/i.test(name);
+    // integrated GPUs: old Intel, the Vega / generic "Radeon Graphics" of Ryzen APUs, Mali, Adreno; and software rendering
+    return /Intel\(R\)\s*(HD|UHD)|Intel HD|\bGMA\b|SwiftShader|llvmpipe|Basic Render|Radeon\(TM\)\s*Vega\s*\d+\s*Graphics|Radeon\(TM\)\s*Graphics|Radeon\s*R[2-5]\s*Graphics|Mali-|Adreno/i.test(name);
   } catch {
     return false;
   }
@@ -448,6 +449,7 @@ export class WorldSceneEngine {
     const maxTierParam = parseInt(params.get('maxtier') ?? '', 10);
     if (Number.isFinite(maxTierParam)) this.maxTier = Math.max(0, Math.min(6, maxTierParam));
     this.weak = !this.mobile && (qParam === 'weak' || (!qParam && probeWeakGpu()));
+    this.gpuWeak = !this.mobile && (qParam === 'weak' || (!qParam && probeWeakGpu(false)));
     if (this.weak) {
       this.bloomScale = 0.5;
       this.LIGHT_POOL_SIZE = 4;
@@ -1146,7 +1148,8 @@ export class WorldSceneEngine {
       this.pendingDpr = null;
     }
     const rawDt = Math.max(0, (now - this.lastPerfTime) * 0.001);
-    if (rawDt > 0.05) this.noteHitch(now, rawDt);
+    // (while the scene is deliberately drawn at 15 fps the frames are 67 ms long on purpose: not hitches)
+    if (rawDt > (this.idleCap ? Math.max(0.05, 1.6 / this.idleCap) : 0.05)) this.noteHitch(now, rawDt);
     const dt = Math.min(rawDt, 0.05); // governor / easing clock
     // The simulation clock follows real time up to 0.1 s per frame (it used to stop at 0.05 s, so
     // below 20 fps the whole journey ran in slow motion: at 12 fps it took 1.7x as long)
@@ -1465,14 +1468,19 @@ export class WorldSceneEngine {
     if (this.weakSaved && tier <= this.savedTier) return;
     this.weakSaved = true;
     this.savedTier = tier;
+    // A weak-looking GPU, or a machine that had to go to tier 5, is remembered for a week. Any other machine that fell to
+    // tier 3 (an unknown integrated GPU, or a busy desktop) only for a day: it starts there next time instead of
+    // crawling through the steps again, but a transient load does not brand it for long.
+    const long = this.gpuWeak || tier >= 5;
     try {
-      localStorage.setItem('td-weak', String(Date.now()));
+      localStorage.setItem('td-weak', String(Date.now() - (long ? 0 : 6 * 24 * 3600 * 1000)));
       localStorage.setItem('td-tier', String(tier));
     } catch {
       /* private mode */
     }
   }
   private savedTier = 0;
+  private gpuWeak = false; // the GPU itself looks weak (not just a remembered verdict)
   // ?maxtier=N stops the quality governor at tier N (to compare how a weak machine does at each level)
   private maxTier = 6;
   private restoreTier() {
@@ -1485,6 +1493,9 @@ export class WorldSceneEngine {
     }
     // (never the last tier at once: 0.8x is a visible loss of sharpness; if the machine still needs it the governor
     // steps there itself within a couple of seconds)
+    // (the verdict is already on record: restoring it must not renew it)
+    this.weakSaved = saved > 0;
+    this.savedTier = saved;
     for (let t = 1; t <= Math.min(saved, 5, this.maxTier); t++) {
       this.qualityTier = t;
       this.applyQualityTier(t);
@@ -1497,9 +1508,8 @@ export class WorldSceneEngine {
   }
 
   private applyQualityTier(tier: number) {
-    // (a machine already judged weak settles at tier 3 and that is remembered; a machine that is not weak is only
-    // remembered if it had to go all the way to 5)
-    if (tier >= 5 || (this.weak && tier >= 3)) this.rememberWeak(tier);
+    // (tier 3 and beyond is remembered, see rememberWeak: for a week on a weak-looking GPU or from tier 5, else a day)
+    if (tier >= 3) this.rememberWeak(tier);
     if (tier === 1) {
       this.dprCap = 1.0;
       this.pendingDpr = 1.0; // applied (and clamped to the cap) at the start of the next frame
