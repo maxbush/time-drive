@@ -22,6 +22,9 @@ export interface StandOptions {
 const DW = 1024;
 const DH = 576;
 const SCALE = 1.5;
+// The board in the scene (not the panel's image) is read from a distance, where it covers about a third of the
+// screen: small grey captions come out 5 px tall there. In this mode they are left out and the rest is larger.
+let compact = false;
 
 type Ctx = CanvasRenderingContext2D;
 
@@ -92,10 +95,23 @@ function node(
   ctx.fill();
   ctx.stroke();
   ctx.textAlign = 'center';
-  tracking(ctx, 0.4);
+  tracking(ctx, compact ? 0.2 : 0.4);
   ctx.fillStyle = '#f1f5f9';
-  fitText(ctx, label, cx, cy - (sub ? 3 : -6), w - 18, (p) => `400 ${p}px ${MONO}`, strong ? 22 : 18);
-  if (sub) {
+  if (compact) {
+    const f = (p: number) => `500 ${p}px ${SANS}`;
+    ctx.font = f(24);
+    const cut = label.lastIndexOf(' · ');
+    if (cut > 0 && ctx.measureText(label).width > w - 10) {
+      // a long label goes on two lines instead of shrinking to nothing
+      fitText(ctx, label.slice(0, cut), cx, cy - 4, w - 10, f, 24);
+      fitText(ctx, label.slice(cut + 3), cx, cy + 22, w - 10, f, 24);
+    } else {
+      fitText(ctx, label, cx, cy + (strong ? 11 : 9), w - 10, f, strong ? 34 : 28);
+    }
+  } else {
+    fitText(ctx, label, cx, cy - (sub ? 3 : -6), w - 18, (p) => `400 ${p}px ${MONO}`, strong ? 22 : 18);
+  }
+  if (sub && !compact) {
     ctx.fillStyle = '#7d8aa0';
     tracking(ctx, 0);
     fitText(ctx, sub, cx, cy + 15, w - 18, (p) => `300 ${p}px ${SANS}`, 14.5);
@@ -111,6 +127,7 @@ function path(ctx: Ctx, pts: [number, number][], color: string, dash?: number[])
 }
 
 function tag(ctx: Ctx, text: string, x: number, y: number) {
+  if (compact) return;
   ctx.save();
   ctx.fillStyle = '#6f7d93';
   ctx.font = `300 11px ${MONO}`;
@@ -174,13 +191,20 @@ function drawMetrics(ctx: Ctx, metrics: string[], accent: string) {
     line(ctx, x, 360, x + colW, 360, 'rgba(255,255,255,0.22)', 1);
     ctx.save();
     ctx.fillStyle = i === 0 ? accent : '#e2e8f0';
-    ctx.font = `400 24px ${MONO}`;
     tracking(ctx, 0.5);
-    ctx.fillText(value || '', x, 400);
-    ctx.fillStyle = '#7d8aa0';
-    ctx.font = `300 16px ${SANS}`;
-    tracking(ctx, 0);
-    ctx.fillText(label || '', x, 430);
+    if (compact) {
+      fitText(ctx, value || '', x, 405, colW, (p) => `500 ${p}px ${MONO}`, 32);
+      ctx.fillStyle = '#9aa7bb';
+      tracking(ctx, 0);
+      fitText(ctx, label || '', x, 440, colW, (p) => `400 ${p}px ${SANS}`, 22);
+    } else {
+      ctx.font = `400 24px ${MONO}`;
+      ctx.fillText(value || '', x, 400);
+      ctx.fillStyle = '#7d8aa0';
+      ctx.font = `300 16px ${SANS}`;
+      tracking(ctx, 0);
+      ctx.fillText(label || '', x, 430);
+    }
     ctx.restore();
   });
 }
@@ -188,7 +212,7 @@ function drawMetrics(ctx: Ctx, metrics: string[], accent: string) {
 // The finished board as an image (for the HTML panel): drawn on demand at a higher scale.
 // Same, but the (slow) image encoding runs off the main thread: resolves to an object URL.
 export function renderStandImageAsync(opts: StandOptions, scale = 2.4): Promise<string> {
-  const tex = createStandTexture(opts, 1, scale);
+  const tex = createStandTexture(opts, 1, scale, false);
   const canvas = tex.image as HTMLCanvasElement;
   return new Promise((resolve, reject) => {
     canvas.toBlob(
@@ -204,7 +228,7 @@ export function renderStandImageAsync(opts: StandOptions, scale = 2.4): Promise<
 }
 
 export function renderStandImage(opts: StandOptions, scale = 2.4): string {
-  const tex = createStandTexture(opts, 1, scale);
+  const tex = createStandTexture(opts, 1, scale, false);
   const canvas = tex.image as HTMLCanvasElement;
   const url = canvas.toDataURL('image/webp', 0.92);
   tex.dispose();
@@ -217,7 +241,13 @@ export function setStandScale(s: number) {
   standScale = s;
 }
 
-export function createStandTexture(opts: StandOptions, anisotropy = 8, scale = standScale): THREE.CanvasTexture {
+export function createStandTexture(
+  opts: StandOptions,
+  anisotropy = 8,
+  scale = standScale,
+  compactBoard = true
+): THREE.CanvasTexture {
+  compact = compactBoard;
   const canvas = document.createElement('canvas');
   canvas.width = DW * scale;
   canvas.height = DH * scale;
@@ -281,8 +311,8 @@ export function createStandTexture(opts: StandOptions, anisotropy = 8, scale = s
   ctx.fillText(idx, 62, 86);
   line(ctx, 100, 80, 150, 80, 'rgba(255,255,255,0.3)', 1);
   ctx.fillStyle = '#8b98ad';
-  ctx.font = `400 15px ${MONO}`;
-  tracking(ctx, 3.5);
+  ctx.font = `400 ${compact ? 19 : 15}px ${MONO}`;
+  tracking(ctx, compact ? 3 : 3.5);
   ctx.fillText((tail ?? head).toUpperCase(), 164, 85);
 
   // title + subtitle
@@ -290,9 +320,13 @@ export function createStandTexture(opts: StandOptions, anisotropy = 8, scale = s
   tracking(ctx, -1);
   fitText(ctx, opts.title, 60, 188, DW - 120, (p) => `200 ${p}px ${SANS}`, 82);
   ctx.fillStyle = '#9aa7bb';
-  ctx.font = `300 25px ${SANS}`;
   tracking(ctx, 0);
-  ctx.fillText(opts.subtitle, 62, 240);
+  if (compact) {
+    fitText(ctx, opts.subtitle, 62, 244, DW - 124, (p) => `300 ${p}px ${SANS}`, 31);
+  } else {
+    ctx.font = `300 25px ${SANS}`;
+    ctx.fillText(opts.subtitle, 62, 240);
+  }
 
   const soft = hexA(opts.accentHex, 0.75);
   if (opts.diagram === 'albion') drawAlbion(ctx, opts.accentHex, soft);
