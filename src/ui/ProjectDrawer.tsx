@@ -33,6 +33,9 @@ export function ProjectDrawer({
   // The live site is attached only after the panel has finished opening: parsing a heavy page
   // right at the click froze the opening animation for a third of a second.
   const [frameSrc, setFrameSrc] = useState<string | null>(null);
+  // Weak devices only: the live page is loaded after a click (it can freeze such a laptop for over a second).
+  // Every other device loads it at once, as before.
+  const [confirmed, setConfirmed] = useState(!lowEnd);
   // the board of the stop, redrawn large for reading (software stops only)
   const [schemaUrl, setSchemaUrl] = useState<string | null>(null);
   const [zoom, setZoom] = useState(false);
@@ -76,6 +79,7 @@ export function ProjectDrawer({
 
   const openSite = (i: number) => {
     setFrameLoaded(false);
+    setConfirmed(!lowEnd);
     setSiteIdx(i);
   };
 
@@ -92,10 +96,10 @@ export function ProjectDrawer({
 
   useEffect(() => {
     setFrameSrc(null);
-    if (!site) return;
+    if (!site || !confirmed) return;
     const t = window.setTimeout(() => setFrameSrc(site.url), 480);
     return () => clearTimeout(t);
-  }, [site]);
+  }, [site, confirmed]);
 
   // A live site shares the page's main thread: freeze the 3D world while it is shown.
   useEffect(() => {
@@ -183,8 +187,33 @@ export function ProjectDrawer({
                 <span className="h-2 w-2 rounded-full bg-emerald-400/80" />
                 <span className="ml-3 truncate font-mono text-[10px] text-slate-300">{site.domain}</span>
               </div>
-              {!frameLoaded && (
-                <div className="absolute inset-x-0 top-9 bottom-0 flex flex-col items-center justify-center gap-4 overflow-hidden bg-[#0a0f18] font-mono text-[11px] uppercase tracking-[0.25em] text-slate-400">
+              {!confirmed && (
+                <div className="absolute inset-x-0 top-[26px] bottom-0 flex flex-col items-center justify-center gap-5 overflow-hidden bg-[#0a0f18] px-6 text-center">
+                  <img src={site.slides[0]} alt="" aria-hidden="true" className="absolute inset-0 h-full w-full object-cover object-top opacity-25" />
+                  <div className="relative flex max-w-md flex-col items-center gap-4">
+                    <h3 className="text-xl font-light tracking-tight text-white">{UI.liveTitle}</h3>
+                    <p className="text-sm font-light leading-relaxed text-slate-300">{UI.liveText}</p>
+                    <div className="flex flex-wrap items-center justify-center gap-3">
+                      <button
+                        onClick={() => setConfirmed(true)}
+                        className="rounded-full bg-amber-300 px-5 py-2 font-mono text-[11px] uppercase tracking-[0.18em] text-black transition hover:bg-amber-200"
+                      >
+                        {UI.liveOpen}
+                      </button>
+                      <a
+                        href={site.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="rounded-full border border-white/25 px-5 py-2 font-mono text-[11px] uppercase tracking-[0.18em] text-slate-200 transition hover:border-amber-300/60 hover:text-amber-200"
+                      >
+                        {UI.liveTab} ↗
+                      </a>
+                    </div>
+                  </div>
+                </div>
+              )}
+              {confirmed && !frameLoaded && (
+                <div className="absolute inset-x-0 top-[26px] bottom-0 flex flex-col items-center justify-center gap-4 overflow-hidden bg-[#0a0f18] font-mono text-[11px] uppercase tracking-[0.25em] text-slate-400">
                   {/* Starting a live page costs the browser a few tenths of a second (a new frame, sometimes a
                       new process). A transform animation runs on the compositor, so this bar keeps sliding
                       smoothly through that stall instead of freezing with the page. */}
