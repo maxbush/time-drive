@@ -1328,7 +1328,11 @@ export class WorldSceneEngine {
     // crawling at 20 fps for the whole opening street)
     if (this.dprTimer >= (this.elapsedTime < 25 ? 1.2 : 2) && this.frameCounter > 30 && !(zPos < -380 || yPos > 5)) {
       this.dprTimer = 0;
-      const maxDpr = Math.min(this.maxRenderDpr(), this.dprCap);
+      // Supersampling stops at 1.5x on an ordinary (1x) screen. The last steps, 1.75 and 2x, add little
+      // sharpness (SMAA and the sharpen pass do the rest) but need render buffers of 8 megapixels:
+      // on a real desktop (many tabs, a video playing) the 1.75 -> 2x reallocation froze the page for
+      // 1.2 s right at the web stop (a recorded hitch). ?dpr=2 still pins 2x for anyone who wants it.
+      const maxDpr = Math.min(this.maxRenderDpr(), this.dprCap, this.mobile ? 99 : Math.max(window.devicePixelRatio || 1, 1.5));
       // Phones never go below 1.5 (below that the image turns to mush).
       const floor = this.mobile ? 1.5 : 1.0;
       const DPR_STEPS = [1.0, 1.25, 1.5, 1.75, 2.0].filter((s) => s >= floor);
