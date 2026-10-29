@@ -316,10 +316,19 @@ export class WorldSceneEngine {
     });
     if (new URLSearchParams(window.location.search).has('debug')) console.warn('[hitch]', JSON.stringify(this.hitches[this.hitches.length - 1]));
   }
+  private gpuName(): string {
+    try {
+      const gl = this.renderer.getContext();
+      const ext = gl.getExtension('WEBGL_debug_renderer_info');
+      return ext ? String(gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)) : 'unknown';
+    } catch {
+      return 'unknown';
+    }
+  }
   /** The recorded hitches as text (for pasting into a bug report). */
   public hitchReport(): string {
     return JSON.stringify(
-      { ua: navigator.userAgent, screen: [screen.width, screen.height, devicePixelRatio], view: [this.viewW, this.viewH], profile: (this.mobile ? 'mobile' : this.weak ? 'weak' : 'full') + ' tier' + this.qualityTier + ' dpr' + this.currentDpr, hitches: this.hitches },
+      { ua: navigator.userAgent, gpu: this.gpuName(), screen: [screen.width, screen.height, devicePixelRatio], view: [this.viewW, this.viewH], profile: (this.mobile ? 'mobile' : this.weak ? 'weak' : 'full') + ' tier' + this.qualityTier + ' dpr' + this.currentDpr, hitches: this.hitches },
       null,
       1
     );
@@ -405,7 +414,9 @@ export class WorldSceneEngine {
     if (this.weak) {
       this.bloomScale = 0.5;
       this.LIGHT_POOL_SIZE = 4;
-      this.dprCap = 1.25;
+      // a weak machine starts at 1x, not 1.25x: every later resolution change reallocates the buffers
+      // (about 200 ms on such a laptop) and the 1.25 -> 1 step came right in the opening seconds
+      this.dprCap = 1.0;
       this.reflScale = 0.33;
     }
     // ?dpr=1.5|1.75|2 pins the render resolution (to judge sharpness vs fps on a phone)
@@ -1389,10 +1400,14 @@ export class WorldSceneEngine {
       }
 
       // Quality governor: ~4s of sustained low FPS steps the scene down a tier
+      // (a machine at under 45% of the target - 12-20 fps - is not going to recover by itself: it acts after one
+      // window and drops two tiers at once, so it reaches a playable picture in seconds, not in sixteen)
+      const crawling = this.currentFps < target * 0.45;
       this.lowStreak = this.currentFps < target * 0.7 ? this.lowStreak + 1 : 0;
-      if (this.lowStreak >= 2 && this.qualityTier < 6) {
+      if ((this.lowStreak >= 2 || (crawling && this.lowStreak >= 1)) && this.qualityTier < 6) {
         this.lowStreak = 0;
-        this.applyQualityTier(++this.qualityTier);
+        const steps = crawling ? 2 : 1;
+        for (let i = 0; i < steps && this.qualityTier < 6; i++) this.applyQualityTier(++this.qualityTier);
       }
     }
   };
@@ -1422,6 +1437,11 @@ export class WorldSceneEngine {
     for (let t = 1; t <= Math.min(saved, 6); t++) {
       this.qualityTier = t;
       this.applyQualityTier(t);
+    }
+    // resize now, behind the loading screen, not in the first frame of the drive
+    if (this.pendingDpr !== null) {
+      this.setDpr(this.pendingDpr);
+      this.pendingDpr = null;
     }
   }
 
@@ -1553,7 +1573,7 @@ export class WorldSceneEngine {
   // Highest pixel ratio worth rendering: the screen's own, or 2x on desktop (supersampling)
   private maxRenderDpr() {
     const native = window.devicePixelRatio || 1;
-    if (this.weak) return Math.min(native, 1.25);
+    if (this.weak) return Math.min(native, 1.0);
     return this.mobile ? native : Math.max(native, 2);
   }
 
