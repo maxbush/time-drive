@@ -721,6 +721,10 @@ export function createVehicleController(
                     m.metalness = Math.max(m.metalness, 0.85);
                     m.roughness = Math.min(m.roughness, 0.18);
                   }
+                  // The door / wing panels carry a brushed-steel normal map that is far too strong for a
+                  // glossy reflection: every bright highlight broke up into torn white patches ("squares").
+                  // At 30% the brushed grain stays, the highlight is one soft shape.
+                  if (/PaletteMaterial006/.test(m.name ?? '') && m.normalMap) m.normalScale.set(0.3, 0.3);
                 }
               }
             }

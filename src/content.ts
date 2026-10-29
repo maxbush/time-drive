@@ -33,7 +33,7 @@ export interface ProjectContent {
   // on the left of the avenue, 03 on the right), so the card never covers the stand.
   side: 'left' | 'right';
   demoSubject: string;
-  cta: string; // label of the contact action ("Запросить демо" / "Обсудить такой сайт")
+  cta: string; // label of the contact action ("Запросить демо" / "Обсудить ваш сайт")
   facts: [string, string][]; // three short, verifiable facts (label, value)
   note?: string; // small line under the lead
   sites?: SiteContent[]; // the website stop lists real sites in its side panel
@@ -42,9 +42,8 @@ export interface ProjectContent {
   media: { src: string; caption: string }[];
 }
 
-// Sites shown in the side panel of stop 01. Slides are viewport screenshots
-// (public/sites/<id>-1..4.webp); `live` sites can also be opened as a live, scrollable
-// preview inside the panel (loaded only on request).
+// Sites shown in the side panel of stop 01: a small preview in the list (public/sites/<id>-1.webp),
+// and a click opens the live site in a near-fullscreen window (an iframe).
 export interface SiteContent {
   id: string;
   name: string;
@@ -53,8 +52,7 @@ export interface SiteContent {
   url: string;
   description: string;
   highlight?: string; // a feature worth pointing out (shown under the description)
-  live: boolean; // live preview is the default view (heavy sites start on screenshots)
-  slides: string[];
+    slides: string[];
 }
 
 export const SITES: SiteContent[] = [
@@ -67,8 +65,7 @@ export const SITES: SiteContent[] = [
     description:
       'Сайт консалтинговой компании из Оксфорда, собранный вместе с SEO-стратегией: маршрут поступления в пять этапов, разделы услуг, гайды, двуязычная структура и анкета консультации.',
     highlight: 'Параллакс в первом экране: слои акварели движутся с разной скоростью при прокрутке.',
-    live: true,
-    slides: [1, 2, 3, 4].map((n) => `./sites/albion-${n}.webp`),
+    slides: ['./sites/albion-1.webp'], // the list preview; the site itself is shown live
   },
   {
     id: 'grodno',
@@ -79,8 +76,7 @@ export const SITES: SiteContent[] = [
     description:
       'Каталог дизайнерских апартаментов в центре Гродно: фотографии, описания, удобства и бронирование.',
     highlight: 'Фотографии подгружаются по мере прокрутки: первая загрузка меньше мегабайта.',
-    live: true,
-    slides: [1, 2, 3, 4].map((n) => `./sites/grodno-${n}.webp`),
+    slides: ['./sites/grodno-1.webp'], // the list preview; the site itself is shown live
   },
   {
     id: 'lune',
@@ -91,8 +87,7 @@ export const SITES: SiteContent[] = [
     description:
       'Сайт продакшн-студии для luxury-брендов: услуги, кампании, студии и интерактивный калькулятор съёмки, где формат, длительность и уровень ретуши сразу дают ориентир по стоимости.',
     highlight: 'Калькулятор стоимости съёмки: выбор параметров пересчитывает пакет и цену.',
-    live: true,
-    slides: [1, 2, 3, 4].map((n) => `./sites/lune-${n}.webp`),
+    slides: ['./sites/lune-1.webp'], // the list preview; the site itself is shown live
   },
   {
     id: 'eca',
@@ -101,8 +96,7 @@ export const SITES: SiteContent[] = [
     domain: 'eca.by',
     url: 'https://eca.by',
     description: 'Сайт компании: направления работ, стандарты и качество, сертификаты, контакты.',
-    live: true,
-    slides: [1, 2, 3, 4].map((n) => `./sites/eca-${n}.webp`),
+    slides: ['./sites/eca-1.webp'], // the list preview; the site itself is shown live
   },
 ];
 
@@ -125,7 +119,7 @@ export const PROJECTS: Record<ProjectId, ProjectContent> = {
     stack: ['Дизайн', 'Разработка', 'SEO'],
     side: 'right',
     demoSubject: 'Запрос: сайт',
-    cta: 'Обсудить такой сайт',
+    cta: 'Обсудить ваш сайт',
     facts: [
       ['Формат', 'под ключ'],
       ['Показано', '4 проекта'],
@@ -230,8 +224,6 @@ export const UI = {
   help: 'Управление',
   details: 'Подробнее',
   viewSites: 'Все сайты',
-  viewLive: 'Живой сайт',
-  viewShots: 'Скриншоты',
   partsTitle: 'Из чего состоит',
   moreAbout: 'Открыть',
   openSite: 'Открыть сайт',
