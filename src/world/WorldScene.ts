@@ -236,6 +236,12 @@ export class WorldSceneEngine {
   private mobile = false;
   private bloomScale = 1;
   private frameCap = 0; // 0 = uncapped, else target FPS
+  // At a stop with the side panel open the scene hardly moves; on a weak device it is drawn at 15 fps then (the page
+  // underneath - the panel, its images, scrolling - gets the rest of the GPU). Set from the UI, see setIdleThrottle.
+  private idleCap = 0;
+  public setIdleThrottle(on: boolean) {
+    this.idleCap = on && this.weak ? 15 : 0;
+  }
   private capStreak = 0;
   private slowFrames = 0; // consecutive frames longer than half a second (background throttling)
   private fpsForced = false; // ?fps=… given: never auto-change the cap
@@ -1132,7 +1138,8 @@ export class WorldSceneEngine {
     }
     // Frame cap (phones that can't hold ~48 fps lock to an even 30 instead of
     // stuttering between 20 and 40). rAF keeps running, we just skip the frame.
-    if (this.frameCap > 0 && now - this.lastPerfTime < 1000 / this.frameCap - 2) return;
+    const cap = this.idleCap || this.frameCap;
+    if (cap > 0 && now - this.lastPerfTime < 1000 / cap - 2) return;
     if (this.pendingDpr !== null) {
       // resize right before drawing, in the same task: no blank frame in between
       this.setDpr(this.pendingDpr);
@@ -1369,7 +1376,7 @@ export class WorldSceneEngine {
     // the GPU, so the governor must not read it as "slow": it pauses and forgets its streaks (it used
     // to walk through every quality step in a background tab and then save "weak" for good).
     this.slowFrames = rawDt > 0.5 ? this.slowFrames + 1 : 0;
-    const throttled = document.hidden || rawDt > 0.5 || this.slowFrames >= 3;
+    const throttled = document.hidden || rawDt > 0.5 || this.slowFrames >= 3 || this.idleCap > 0;
     if (throttled) {
       this.dprTimer = 0;
       this.dipStreak = 0;

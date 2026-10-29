@@ -264,6 +264,16 @@ export default function App() {
     return () => window.removeEventListener('resize', on);
   }, []);
   const panelOpen = drawerOpen && !!activeProject && hudVisible;
+  // weak device, parked at a stop with the panel open: the scene is drawn at a low rate (after the panel's slide-in,
+  // so the view shift is not choppy)
+  useEffect(() => {
+    if (!panelOpen) {
+      engineRef.current?.setIdleThrottle(false);
+      return;
+    }
+    const t = window.setTimeout(() => engineRef.current?.setIdleThrottle(true), 1300);
+    return () => window.clearTimeout(t);
+  }, [panelOpen]);
   const panelDir = activeProject?.side === 'left' ? -1 : 1; // the panel sits opposite the stand
   useEffect(() => {
     const vw = window.innerWidth;
