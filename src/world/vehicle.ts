@@ -414,7 +414,7 @@ export function createVehicleController(
   // Electric arcs crawling over the body during the transitions. Thin HDR lines
   // (bloom turns them into a glow), re-rolled every 40-140 ms so they crackle.
   // Always rendered (opacity 0 / collapsed when idle) so the shader compiles at load.
-  const ARC_COUNT = 9;
+  const ARC_COUNT = 14;
   const ARC_SEG = 12;
   const arcPos = new Float32Array(ARC_COUNT * ARC_SEG * 2 * 3);
   const arcGeo = new THREE.BufferGeometry();
@@ -440,10 +440,66 @@ export function createVehicleController(
   const arcPts: number[] = new Array((ARC_SEG + 1) * 3).fill(0);
   const rnd = (a: number, b: number) => a + Math.random() * (b - a);
 
+  // Points on the real body (chassis space) with their normals, collected once the model is in: the
+  // arcs run over the actual surface - roof, doors, hood, rear, wheel arches - instead of boxes tuned
+  // for an earlier model that mostly sat inside the body (only the bumper showed).
+  let arcSurface: Float32Array | null = null;
+  const collectArcSurface = (group: THREE.Object3D) => {
+    chassis.updateWorldMatrix(true, true);
+    const inv = new THREE.Matrix4().copy(chassis.matrixWorld).invert();
+    const m4 = new THREE.Matrix4();
+    const nm = new THREE.Matrix3();
+    const v = new THREE.Vector3();
+    const n = new THREE.Vector3();
+    const pts: number[] = [];
+    group.traverse((o) => {
+      if (!(o instanceof THREE.Mesh)) return;
+      const mats = Array.isArray(o.material) ? o.material : [o.material];
+      if (mats.some((m) => m && /wheel|tire|tyre/i.test(m.name ?? ''))) return; // they spin
+      const pos = o.geometry.attributes.position;
+      const nor = o.geometry.attributes.normal;
+      if (!pos || !nor || pos.count < 30) return;
+      m4.multiplyMatrices(inv, o.matrixWorld);
+      nm.getNormalMatrix(m4);
+      const step = Math.max(1, Math.floor(pos.count / 70));
+      for (let i = Math.floor(Math.random() * step); i < pos.count; i += step) {
+        v.fromBufferAttribute(pos, i).applyMatrix4(m4);
+        n.fromBufferAttribute(nor, i).applyMatrix3(nm).normalize();
+        if (v.y < 0.18) continue; // not under the car
+        pts.push(v.x, v.y, v.z, n.x, n.y, n.z);
+      }
+    });
+    arcSurface = pts.length >= 6 * 60 ? new Float32Array(pts) : null;
+  };
+
   const rollArc = (i: number) => {
-    let ax: number, ay: number, az: number, bx: number, by: number, bz: number;
+    let ax = 0, ay = 0, az = 0, bx = 0, by = 0, bz = 0;
+    let lx = 0, ly = 0, lz = 0; // which way the arc is lifted off the surface (average normal)
     const r = Math.random();
-    if (r < 0.4) {
+    let surfaceArc = false;
+    if (arcSurface && r < 0.9) {
+      const cnt = arcSurface.length / 6;
+      const a = Math.floor(Math.random() * cnt) * 6;
+      let best = -1;
+      for (let tries = 0; tries < 10 && best < 0; tries++) {
+        const b = Math.floor(Math.random() * cnt) * 6;
+        const d = Math.hypot(arcSurface[b] - arcSurface[a], arcSurface[b + 1] - arcSurface[a + 1], arcSurface[b + 2] - arcSurface[a + 2]);
+        if (d > 0.6 && d < 2.6) best = b;
+      }
+      if (best >= 0) {
+        surfaceArc = true;
+        ax = arcSurface[a]; ay = arcSurface[a + 1]; az = arcSurface[a + 2];
+        bx = arcSurface[best]; by = arcSurface[best + 1]; bz = arcSurface[best + 2];
+        lx = arcSurface[a + 3] + arcSurface[best + 3];
+        ly = arcSurface[a + 4] + arcSurface[best + 4];
+        lz = arcSurface[a + 5] + arcSurface[best + 5];
+        const ll = Math.hypot(lx, ly, lz) || 1;
+        lx /= ll; ly /= ll; lz /= ll;
+      }
+    }
+    if (surfaceArc) {
+      // (positions are set above)
+    } else if (r < 0.4) {
       // across the rear panel (the part the chase camera actually sees)
       az = bz = 3.5;
       ax = rnd(-0.95, 0.95);
@@ -471,9 +527,12 @@ export function createVehicleController(
     for (let k = 0; k <= ARC_SEG; k++) {
       const t = k / ARC_SEG;
       const edge = k === 0 || k === ARC_SEG ? 0 : Math.sin(Math.PI * t);
-      arcPts[k * 3] = ax + (bx - ax) * t + rnd(-jit, jit) * edge;
-      arcPts[k * 3 + 1] = ay + (by - ay) * t + rnd(-jit, jit) * edge;
-      arcPts[k * 3 + 2] = az + (bz - az) * t + rnd(-jit, jit) * edge;
+      // a surface arc is also bulged away from the paint (a straight chord between two points on a curved
+      // body would run inside it), and a little outward everywhere so it never z-fights with the metal
+      const lift = surfaceArc ? 0.05 + len * 0.07 * edge : 0;
+      arcPts[k * 3] = ax + (bx - ax) * t + rnd(-jit, jit) * edge + lx * lift;
+      arcPts[k * 3 + 1] = ay + (by - ay) * t + rnd(-jit, jit) * edge + ly * lift;
+      arcPts[k * 3 + 2] = az + (bz - az) * t + rnd(-jit, jit) * edge + lz * lift;
     }
     for (let k = 0; k < ARC_SEG; k++) {
       const o = (i * ARC_SEG + k) * 6;
@@ -520,6 +579,7 @@ export function createVehicleController(
     chassis.add(group);
     currentCar = id;
     setupWheelPivots(group);
+    collectArcSurface(group);
     if (new URLSearchParams(window.location.search).has('debug')) {
       console.info('[wheels] pivots=' + wheelPivots.length);
     }
