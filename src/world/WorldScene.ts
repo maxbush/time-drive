@@ -382,7 +382,7 @@ export class WorldSceneEngine {
   private upStreak = 0; // consecutive windows with headroom
   private ssDowns = 0; // times a supersampled resolution had to be stepped back down
   private dprCap = 2.0; // governor steps this down on weak hardware anyway
-  private qualityTier = 0; // 0 full → 1 low-DPR → 2 no reflection → 3 no bloom
+  private qualityTier = 0; // 0 full → 1 low-DPR → 2 no reflection → 3 quarter-res bloom → 4 no bloom + FXAA
   private lowStreak = 0;
   private reflectionDisabled = false;
   private spaceDprDropped = false;
@@ -433,7 +433,7 @@ export class WorldSceneEngine {
       this.dprCap = 2.0;
       if (!fpsParam) this.frameCap = 30;
       this.reflectionDisabled = true;
-      this.qualityTier = 2; // reflection already off; next governor step drops bloom
+      this.qualityTier = 2; // reflection already off; next governor step shrinks bloom
     }
     // Weak GPU (old Intel HD/UHD, software rendering): fewer lights, cheaper shadow filter,
     // FXAA instead of SMAA, half-res bloom, smaller reflection, no supersampling.
@@ -538,7 +538,7 @@ export class WorldSceneEngine {
       await WorldSceneEngine.breathe();
     };
 
-    const texLib = await createTextureLibrary(this.renderer, this.weak ? 8 : 16, () => WorldSceneEngine.breathe());
+    const texLib = await createTextureLibrary(this.renderer, this.weak ? 8 : 16, () => WorldSceneEngine.breathe(), this.weak || this.mobile);
     if (this.disposed) return;
     const palette = createMaterialPalette(texLib, { mobile: this.mobile });
     await step(0.15);
@@ -1516,8 +1516,16 @@ export class WorldSceneEngine {
     } else if (tier === 2) {
       this.reflectionDisabled = true;
     } else if (tier === 3) {
-      this.bloomPass.enabled = false;
+      if (this.bloomQuarter) {
+        // the glow of signs and headlights is a large part of the night look: keep it, but at a quarter of the
+        // resolution (it is a blur anyway), and only drop it at tier 4. ?bloomq=0 restores "off at tier 3".
+        this.bloomScale = 0.25;
+        this.bloomPass.setSize(this.viewW * this.bloomScale, this.viewH * this.bloomScale);
+      } else {
+        this.bloomPass.enabled = false;
+      }
     } else if (tier === 4) {
+      if (this.bloomQuarter) this.bloomPass.enabled = false;
       // three SMAA passes -> one FXAA pass
       if (this.smaaPass && this.fxaaPass) {
         this.smaaPass.enabled = false;
@@ -1542,6 +1550,7 @@ export class WorldSceneEngine {
       this.pendingDpr = 0.8;
     }
   }
+  private bloomQuarter = new URLSearchParams(window.location.search).get('bloomq') !== '0';
   private droppedCasters: THREE.Mesh[] = [];
   private dprFloor = 1.0;
 
@@ -1651,7 +1660,7 @@ export class WorldSceneEngine {
     this.renderer.setSize(this.viewW, this.viewH);
     this.composer.setSize(this.viewW, this.viewH);
     // Bloom is low-frequency: at render res >=1.5x half-res bloom is free
-    if (!this.mobile && !this.weak) this.bloomScale = next >= 1.5 ? 0.5 : 1;
+    if (!this.mobile && !this.weak && !(this.bloomQuarter && this.qualityTier >= 3)) this.bloomScale = next >= 1.5 ? 0.5 : 1;
     this.bloomPass.setSize(this.viewW * this.bloomScale, this.viewH * this.bloomScale);
     this.reflectRT.setSize(
       this.mobile ? 64 : Math.max(256, Math.floor(this.viewW * next * this.reflScale)),
