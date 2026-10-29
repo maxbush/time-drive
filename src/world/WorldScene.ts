@@ -294,6 +294,35 @@ export class WorldSceneEngine {
   private treeLod: TreeLod | null = null; // full trees near the car, cheap ones far away
   private compileRT: THREE.WebGLRenderTarget | null = null;
   private fovKickCur = 0;
+
+  // Weak devices: buildings and props farther than 520 m are not drawn. The architecture is about 40% of the
+  // triangles and at the start of the drive the stops of the later chapters (400-800 m ahead, mostly hidden in the
+  // haze) are drawn too. They are chunks of ~64 m with their own bounds, so this is a distance check per chunk.
+  private distCull: { m: THREE.Object3D; cx: number; cz: number; r: number }[] | null = null;
+  private updateDistanceCull() {
+    if (!this.distCull) {
+      this.distCull = [];
+      const skip = new Set<THREE.Object3D>(this.microDetail ?? []);
+      for (const root of [this.archGroup, this.avenue.group]) {
+        root.updateWorldMatrix(true, true);
+        root.traverse((o) => {
+          const m = o as THREE.Mesh;
+          if (!m.isMesh || skip.has(o) || o.name === 'reflSkip') return;
+          const g = m.geometry;
+          if (!g.boundingSphere) g.computeBoundingSphere();
+          const bs = g.boundingSphere;
+          if (!bs || bs.radius > 200) return; // the road, the ground: always
+          const c = bs.center.clone().applyMatrix4(m.matrixWorld);
+          this.distCull!.push({ m: o, cx: c.x, cz: c.z, r: bs.radius * m.matrixWorld.getMaxScaleOnAxis() });
+        });
+      }
+    }
+    const p = this.vehicle.position;
+    const R = 520;
+    for (const e of this.distCull) {
+      e.m.visible = Math.hypot(e.cx - p.x, e.cz - p.z) - e.r < R;
+    }
+  }
   // Frames longer than 50 ms, with what was going on (Ctrl+Alt+L copies the list: see handleKeyDown)
   private hitches: Record<string, number | string | null>[] = [];
   private noteHitch(now: number, dt: number) {
@@ -544,7 +573,7 @@ export class WorldSceneEngine {
     const params0 = new URLSearchParams(window.location.search);
     const compileA = params0.has('noasync') ? Promise.resolve() : this.precompileAsync();
 
-    const archResult = await buildWorldArchitecture(palette, texLib.maxAnisotropy, () => WorldSceneEngine.breathe());
+    const archResult = await buildWorldArchitecture(palette, texLib.maxAnisotropy, () => WorldSceneEngine.breathe(), this.weak);
     if (this.disposed) return;
     this.archGroup = archResult.group;
     this.scene.add(this.archGroup);
@@ -1317,6 +1346,8 @@ export class WorldSceneEngine {
       this.sharpCur += (want - this.sharpCur) * (1 - Math.exp(-2 * dt));
       this.sharpPass.uniforms.uSharp.value = this.sharpCur;
     }
+    this.vehicle.setShadowProxyVisible(shadowNow);
+    if (this.weak && (this.frameCounter & 7) === 0) this.updateDistanceCull();
     this.composer.render();
 
     this.frameCounter++;

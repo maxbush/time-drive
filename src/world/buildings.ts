@@ -95,6 +95,11 @@ function addOrientedBox(
   }
 }
 
+// Weak devices: the opening street is built with fewer, simpler parts (no shop interiors, no window sills / frames /
+// balconies, no roof props). The facades keep their piers, floor bands, glazing quads, signs and canopies, so the street
+// reads the same from the road; it is a third of the geometry. Set by buildWorldArchitecture(lite).
+let LITE = false;
+
 function buildStorefrontInteriorAndFacade(
   b: ArchitectureBuilder,
   faceOriginX: number,
@@ -121,6 +126,10 @@ function buildStorefrontInteriorAndFacade(
   const roomW = Math.max(3.2, faceLength - pierW * 2);
   const clearH = podiumH - friezeH - 0.1;
 
+  if (LITE) {
+    // one lit back wall right behind the glass instead of a furnished room
+    addOrientedBox(b, 'emissiveWarmSoft', faceOriginX, groundY, faceOriginZ, axis, 0, clearH / 2, -0.7, roomW * 0.92, clearH * 0.8, 0.06);
+  } else {
   addOrientedBox(b, 'interiorFloorStone', faceOriginX, groundY, faceOriginZ, axis, 0, 0.06, -interiorDepth / 2 - 0.1, roomW, 0.12, interiorDepth);
   addOrientedBox(b, 'interiorPlasterWarm', faceOriginX, groundY, faceOriginZ, axis, 0, clearH - 0.08, -interiorDepth / 2 - 0.1, roomW, 0.14, interiorDepth);
   addOrientedBox(b, 'interiorPlasterWarm', faceOriginX, groundY, faceOriginZ, axis, 0, clearH / 2, -interiorDepth - 0.1, roomW, clearH, 0.18);
@@ -129,6 +138,7 @@ function buildStorefrontInteriorAndFacade(
 
   addOrientedBox(b, 'emissiveWarmSoft', faceOriginX, groundY, faceOriginZ, axis, 0, clearH - 0.18, -interiorDepth + 0.28, roomW * 0.88, 0.08, 0.18);
   addOrientedBox(b, 'emissiveWarmSoft', faceOriginX, groundY, faceOriginZ, axis, 0, clearH - 0.18, -0.95, roomW * 0.86, 0.07, 0.16);
+  }
 
   const numBays = Math.max(2, Math.round(roomW / 5.6));
   const baySpan = roomW / numBays;
@@ -147,15 +157,19 @@ function buildStorefrontInteriorAndFacade(
     if (i === doorBayIdx) {
       const alcoveZ = glassLineOffset - 0.95;
       const openW = baySpan - 0.52;
-      addOrientedBox(b, 'emissiveWarmBright', faceOriginX, groundY, faceOriginZ, axis, bayCenter, clearH - 0.12, glassLineOffset - 0.45, openW * 0.65, 0.06, 0.35);
-      addOrientedBox(b, trimMat, faceOriginX, groundY, faceOriginZ, axis, bayCenter, 2.55, alcoveZ, openW, 0.12, 0.12);
-      addOrientedBox(b, trimMat, faceOriginX, groundY, faceOriginZ, axis, bayCenter, 1.28, alcoveZ, 0.12, 2.55, 0.12);
+      if (!LITE) {
+        addOrientedBox(b, 'emissiveWarmBright', faceOriginX, groundY, faceOriginZ, axis, bayCenter, clearH - 0.12, glassLineOffset - 0.45, openW * 0.65, 0.06, 0.35);
+        addOrientedBox(b, trimMat, faceOriginX, groundY, faceOriginZ, axis, bayCenter, 2.55, alcoveZ, openW, 0.12, 0.12);
+        addOrientedBox(b, trimMat, faceOriginX, groundY, faceOriginZ, axis, bayCenter, 1.28, alcoveZ, 0.12, 2.55, 0.12);
+      }
       addOrientedBox(b, 'storefrontGlass', faceOriginX, groundY, faceOriginZ, axis, bayCenter, clearH / 2, alcoveZ, openW - 0.1, clearH - 0.15, 0.03);
     } else {
       const openW = baySpan - 0.48;
       const plinthH = store.theme === 'gallery' ? 0.3 : 0.52;
-      addOrientedBox(b, store.theme === 'gallery' ? 'darkBronze' : wallMat, faceOriginX, groundY, faceOriginZ, axis, bayCenter, plinthH / 2, glassLineOffset, openW, plinthH, 0.36);
-      addOrientedBox(b, trimMat, faceOriginX, groundY, faceOriginZ, axis, bayCenter, 2.95, glassLineOffset + 0.02, openW, 0.09, 0.12);
+      if (!LITE) {
+        addOrientedBox(b, store.theme === 'gallery' ? 'darkBronze' : wallMat, faceOriginX, groundY, faceOriginZ, axis, bayCenter, plinthH / 2, glassLineOffset, openW, plinthH, 0.36);
+        addOrientedBox(b, trimMat, faceOriginX, groundY, faceOriginZ, axis, bayCenter, 2.95, glassLineOffset + 0.02, openW, 0.09, 0.12);
+      }
       addOrientedBox(
         b,
         'storefrontGlass',
@@ -172,7 +186,9 @@ function buildStorefrontInteriorAndFacade(
       );
 
       const propDepth = -1.55;
-      if (store.theme === 'gallery') {
+      if (LITE) {
+        // (no shop furniture)
+      } else if (store.theme === 'gallery') {
         addOrientedBox(b, 'paleLimestone', faceOriginX, groundY, faceOriginZ, axis, bayCenter - openW * 0.2, 0.65, propDepth, 0.68, 1.15, 0.68);
         addOrientedBox(b, 'champagneMetal', faceOriginX, groundY, faceOriginZ, axis, bayCenter - openW * 0.2, 1.58, propDepth, 0.36, 0.78, 0.32);
         addOrientedBox(b, 'emissiveWarmSoft', faceOriginX, groundY, faceOriginZ, axis, bayCenter, 2.25, -interiorDepth + 0.08, openW * 0.58, 1.55, 0.08);
@@ -276,34 +292,39 @@ function buildUpperFacadeWall(
       const bayCenter = -usableW / 2 + (i + 0.5) * bayW;
       const sillY = spandrelH * 0.72;
 
-      addOrientedBox(b, spec.secondaryMat, faceOriginX, fBaseY, faceOriginZ, axis, bayCenter, sillY * 0.5, -0.51, winW + 0.08, sillY + 0.04, 0.74);
-      addOrientedBox(b, spec.trimMat, faceOriginX, fBaseY, faceOriginZ, axis, bayCenter, sillY, -0.18, winW + 0.1, 0.12, 0.52);
+      if (!LITE) {
+        addOrientedBox(b, spec.secondaryMat, faceOriginX, fBaseY, faceOriginZ, axis, bayCenter, sillY * 0.5, -0.51, winW + 0.08, sillY + 0.04, 0.74);
+        addOrientedBox(b, spec.trimMat, faceOriginX, fBaseY, faceOriginZ, axis, bayCenter, sillY, -0.18, winW + 0.1, 0.12, 0.52);
+      }
 
       const topBandH = Math.max(0.18, spec.floorH - (sillY + winH));
-      addOrientedBox(
-        b,
-        spec.style === 'industrial-loft' ? 'blackSteel' : spec.wallMat,
-        faceOriginX,
-        fBaseY,
-        faceOriginZ,
-        axis,
-        bayCenter,
-        sillY + winH + topBandH * 0.5,
-        -0.43,
-        winW + 0.1,
-        topBandH + 0.04,
-        0.9
-      );
+      if (!LITE) {
+        addOrientedBox(
+          b,
+          spec.style === 'industrial-loft' ? 'blackSteel' : spec.wallMat,
+          faceOriginX,
+          fBaseY,
+          faceOriginZ,
+          axis,
+          bayCenter,
+          sillY + winH + topBandH * 0.5,
+          -0.43,
+          winW + 0.1,
+          topBandH + 0.04,
+          0.9
+        );
+
+      }
 
       const winCenterY = fBaseY + sillY + winH * 0.5;
       const paneOffset = -spec.recessDepth;
 
-      addOrientedBox(b, spec.trimMat, faceOriginX, 0, faceOriginZ, axis, bayCenter, winCenterY + winH * 0.2, paneOffset + 0.04, winW, 0.06, 0.08);
-      if (winW > 1.55) {
+      if (!LITE) addOrientedBox(b, spec.trimMat, faceOriginX, 0, faceOriginZ, axis, bayCenter, winCenterY + winH * 0.2, paneOffset + 0.04, winW, 0.06, 0.08);
+      if (!LITE && winW > 1.55) {
         addOrientedBox(b, spec.trimMat, faceOriginX, 0, faceOriginZ, axis, bayCenter, winCenterY, paneOffset + 0.04, 0.06, winH, 0.08);
       }
 
-      if (spec.balconies && (floorIdx + i) % 2 === 0 && f < numFloors - 1) {
+      if (!LITE && spec.balconies && (floorIdx + i) % 2 === 0 && f < numFloors - 1) {
         const balcY = fBaseY + sillY;
         addOrientedBox(b, spec.secondaryMat, faceOriginX, 0, faceOriginZ, axis, bayCenter, balcY - 0.05, 0.34, winW + 0.36, 0.14, 0.72);
         addOrientedBox(b, spec.trimMat, faceOriginX, 0, faceOriginZ, axis, bayCenter, balcY + 0.48, 0.66, winW + 0.34, 0.06, 0.06);
@@ -440,7 +461,7 @@ function buildAuthoredBuilding(b: ArchitectureBuilder, spec: BuildingSpec) {
   b.addBox('archConcrete', cx, roofY + 1.6, cz, mechW, 3.2, mechD);
   b.addBox(spec.trimMat, cx, roofY + 3.28, cz, mechW + 0.3, 0.18, mechD + 0.3);
 
-  if (spec.roofProps) {
+  if (spec.roofProps && !LITE) {
     const roadFace = spec.activeFaces[0]?.facing ?? '+X';
     const axis = getFacadeAxis(roadFace);
 
@@ -1185,8 +1206,10 @@ function buildCluster3TendersAndContinuum(b: ArchitectureBuilder, treePlacements
 export async function buildWorldArchitecture(
   palette: MaterialPalette,
   maxAnisotropy: number,
-  pause: () => Promise<void> = async () => {}
+  pause: () => Promise<void> = async () => {},
+  lite = false
 ): Promise<{ group: THREE.Group; lightAnchors: LightAnchor[]; treePlacements: TreePlacement[] }> {
+  LITE = lite;
   const builder = new ArchitectureBuilder(maxAnisotropy);
   const treePlacements: TreePlacement[] = [];
 

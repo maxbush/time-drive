@@ -21,6 +21,9 @@ export interface VehicleController {
   ready: Promise<void>;
   /** 0..1 glow around the car (blue underglow + aura) used by the transitions. */
   setFx: (v: number) => void;
+  /** The shadow caster is a copy of the car drawn with no colour: it only matters in frames that redraw the
+   *  shadow map. Switching it off in the other frames saves 25k triangles of pointless vertex work. */
+  setShadowProxyVisible: (v: boolean) => void;
   update: (
     dt: number,
     input: { forward: boolean; backward: boolean; left: boolean; right: boolean; boost: boolean },
@@ -198,6 +201,7 @@ export function createVehicleController(
     pm.dispose();
   }
 
+  let shadowProxy: THREE.Object3D | null = null;
   const root = new THREE.Group();
   root.position.set(2.8, 0.0, 315);
   scene.add(root);
@@ -792,6 +796,7 @@ export function createVehicleController(
     });
     shadowWrap.scale.setScalar(0.985);
     chassis.add(shadowWrap);
+    shadowProxy = shadowWrap;
 
     const reflWrap = mkNormalized();
     const reflMat = new THREE.MeshStandardMaterial({
@@ -834,6 +839,9 @@ export function createVehicleController(
       return currentCar;
     },
     ready,
+    setShadowProxyVisible: (v: boolean) => {
+      if (shadowProxy) shadowProxy.visible = v;
+    },
     setFx: (v: number) => {
       fxLevel = THREE.MathUtils.clamp(v, 0, 1);
     },
