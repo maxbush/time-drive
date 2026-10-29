@@ -199,7 +199,7 @@ export function ProjectDrawer({
                 // third-party pages: scripts and forms work, but they cannot navigate the portfolio itself
                 sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox"
                 onLoad={() => setFrameLoaded(true)}
-                className="min-h-0 w-full flex-1 border-0 bg-white"
+                className="min-h-0 w-full flex-1 border-0 bg-[#0a0f18]"
               />
               )}
             </div>
