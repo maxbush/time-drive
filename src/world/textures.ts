@@ -319,6 +319,9 @@ async function buildAsphaltSet(anisotropy: number, pause: () => Promise<void>): 
   };
 }
 
+/** 1 = full size; 0.5 on weak GPUs and phones (set by createTextureLibrary). Asphalt and signs ignore it. */
+let texScale = 1;
+
 function buildStoneOrBrickSet(
   opts: {
     w: number;
@@ -337,7 +340,15 @@ function buildStoneOrBrickSet(
   },
   anisotropy: number
 ): PBRTextureSet {
-  const { w, h, rows, cols, baseRGB, varRGB, mortarRGB, mortarPx, baseRough, mortarRough, normalStrength, streakStrength, seed } = opts;
+  const { rows, cols, baseRGB, varRGB, mortarRGB, baseRough, mortarRough, normalStrength, streakStrength, seed } = opts;
+  // weak GPUs / phones: half the resolution (a quarter of the pixel loop). Pixel-unit details scale with it.
+  const s = texScale;
+  const w = Math.max(64, Math.round(opts.w * s));
+  const h = Math.max(64, Math.round(opts.h * s));
+  const mortarPx = opts.mortarPx * s;
+  const i15 = 1.5 * s;
+  const i2 = 2 * s;
+  const i3 = 3 * s;
   const rng = mulberry32(seed);
   const [albedoC, aCtx] = makeCanvas(w, h);
   const [heightC, hCtx] = makeCanvas(w, h);
@@ -379,10 +390,10 @@ function buildStoneOrBrickSet(
       aCtx.fillRect(rx, ry, rw, rh);
 
       aCtx.fillStyle = `rgb(${cr},${cg},${cb})`;
-      aCtx.fillRect(rx + 1.5, ry + 1.5, Math.max(1, rw - 3), Math.max(1, rh - 3));
+      aCtx.fillRect(rx + i15, ry + i15, Math.max(1, rw - i3), Math.max(1, rh - i3));
 
       aCtx.fillStyle = `rgba(255, 250, 242, 0.09)`;
-      aCtx.fillRect(rx + 2, ry + 1.5, Math.max(1, rw - 4), 2);
+      aCtx.fillRect(rx + i2, ry + i15, Math.max(1, rw - 2 * i2), i2);
 
       const hVal = Math.round(212 + (rng() - 0.5) * 28);
       const hMid = Math.round(hVal * 0.72);
@@ -391,9 +402,9 @@ function buildStoneOrBrickSet(
       hCtx.fillStyle = `rgb(${hEdge},${hEdge},${hEdge})`;
       hCtx.fillRect(rx, ry, rw, rh);
       hCtx.fillStyle = `rgb(${hMid},${hMid},${hMid})`;
-      hCtx.fillRect(rx + 1.5, ry + 1.5, Math.max(1, rw - 3), Math.max(1, rh - 3));
+      hCtx.fillRect(rx + i15, ry + i15, Math.max(1, rw - i3), Math.max(1, rh - i3));
       hCtx.fillStyle = `rgb(${hVal},${hVal},${hVal})`;
-      hCtx.fillRect(rx + 3, ry + 3, Math.max(1, rw - 6), Math.max(1, rh - 6));
+      hCtx.fillRect(rx + i3, ry + i3, Math.max(1, rw - 2 * i3), Math.max(1, rh - 2 * i3));
 
       const rByte = Math.max(30, Math.min(245, Math.round((baseRough + (rng() - 0.5) * 0.12) * 255)));
       rCtx.fillStyle = `rgb(${rByte},${rByte},${rByte})`;
@@ -445,8 +456,9 @@ function buildStoneOrBrickSet(
 }
 
 function buildFlutedConcreteSet(anisotropy: number): PBRTextureSet {
-  const w = 512;
-  const h = 512;
+  const s = texScale;
+  const w = Math.round(512 * s);
+  const h = Math.round(512 * s);
   const rng = mulberry32(99371);
   const [albedoC, aCtx] = makeCanvas(w, h);
   const [heightC, hCtx] = makeCanvas(w, h);
@@ -458,7 +470,7 @@ function buildFlutedConcreteSet(anisotropy: number): PBRTextureSet {
 
   const flutes = 24;
   for (let y = 0; y < h; y++) {
-    const panelJoint = y % 128 < 3;
+    const panelJoint = y % Math.round(128 * s) < Math.max(2, Math.round(3 * s));
     for (let x = 0; x < w; x++) {
       const i = (y * w + x) * 4;
       const flutePhase = ((x / w) * flutes) % 1;
@@ -886,8 +898,10 @@ export function createShowcaseScreenTexture(
 export async function createTextureLibrary(
   renderer: THREE.WebGLRenderer,
   maxAniso = 16,
-  pause: () => Promise<void> = async () => {}
+  pause: () => Promise<void> = async () => {},
+  halfSize = false
 ): Promise<TextureLibrary> {
+  texScale = halfSize ? 0.5 : 1;
   const maxAnisotropy = Math.min(maxAniso, renderer.capabilities.getMaxAnisotropy());
 
   const asphalt = await buildAsphaltSet(maxAnisotropy, pause);
