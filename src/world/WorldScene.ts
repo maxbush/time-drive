@@ -410,6 +410,8 @@ export class WorldSceneEngine {
         /* private mode */
       }
     }
+    const maxTierParam = parseInt(params.get('maxtier') ?? '', 10);
+    if (Number.isFinite(maxTierParam)) this.maxTier = Math.max(0, Math.min(6, maxTierParam));
     this.weak = !this.mobile && (qParam === 'weak' || (!qParam && probeWeakGpu()));
     if (this.weak) {
       this.bloomScale = 0.5;
@@ -1307,7 +1309,11 @@ export class WorldSceneEngine {
     }
     // Desktop CAS: stronger on the opening street so the gantry posters read, light elsewhere
     if (this.sharpPass && !this.mobile && !this.sharpFixed) {
-      const want = this.sharpBase + (zPos > 105 ? this.sharpBoost : 0);
+      // rendering below the screen's own resolution (the weak tiers): the browser stretches the picture, so the
+      // contrast-adaptive sharpen is raised to bring the edges back (it does not ring or amplify noise)
+      const native = window.devicePixelRatio || 1;
+      const upscale = Math.min(0.4, Math.max(0, (native / this.currentDpr - 1) * 0.8));
+      const want = this.sharpBase + (zPos > 105 ? this.sharpBoost : 0) + upscale;
       this.sharpCur += (want - this.sharpCur) * (1 - Math.exp(-2 * dt));
       this.sharpPass.uniforms.uSharp.value = this.sharpCur;
     }
@@ -1404,10 +1410,10 @@ export class WorldSceneEngine {
       // window and drops two tiers at once, so it reaches a playable picture in seconds, not in sixteen)
       const crawling = this.currentFps < target * 0.45;
       this.lowStreak = this.currentFps < target * 0.7 ? this.lowStreak + 1 : 0;
-      if ((this.lowStreak >= 2 || (crawling && this.lowStreak >= 1)) && this.qualityTier < 6) {
+      if ((this.lowStreak >= 2 || (crawling && this.lowStreak >= 1)) && this.qualityTier < this.maxTier) {
         this.lowStreak = 0;
         const steps = crawling ? 2 : 1;
-        for (let i = 0; i < steps && this.qualityTier < 6; i++) this.applyQualityTier(++this.qualityTier);
+        for (let i = 0; i < steps && this.qualityTier < this.maxTier; i++) this.applyQualityTier(++this.qualityTier);
       }
     }
   };
@@ -1426,6 +1432,8 @@ export class WorldSceneEngine {
     }
   }
   private savedTier = 0;
+  // ?maxtier=N stops the quality governor at tier N (to compare how a weak machine does at each level)
+  private maxTier = 6;
   private restoreTier() {
     if (!this.weak || this.mobile) return;
     let saved = 0;
@@ -1434,7 +1442,9 @@ export class WorldSceneEngine {
     } catch {
       /* private mode */
     }
-    for (let t = 1; t <= Math.min(saved, 6); t++) {
+    // (never the last tier at once: 0.8x is a visible loss of sharpness; if the machine still needs it the governor
+    // steps there itself within a couple of seconds)
+    for (let t = 1; t <= Math.min(saved, 5, this.maxTier); t++) {
       this.qualityTier = t;
       this.applyQualityTier(t);
     }
