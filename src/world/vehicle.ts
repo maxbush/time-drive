@@ -786,6 +786,7 @@ export function createVehicleController(
     shadowWrap.traverse((obj) => {
       if (obj instanceof THREE.Mesh) {
         obj.castShadow = true;
+        obj.userData.carShadow = true; // the one caster that stays when the engine drops the others (weakest tier)
         obj.material = ghost;
       }
     });

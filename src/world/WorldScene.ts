@@ -177,6 +177,7 @@ function probeWeakGpu(): boolean {
     if (saved) {
       const age = Date.now() - Number(saved);
       if (Number.isFinite(age) && age >= 0 && age < 7 * 24 * 3600 * 1000) return true;
+      localStorage.removeItem('td-tier');
       localStorage.removeItem('td-weak'); // legacy "1" or expired
     }
     const c = document.createElement('canvas');
@@ -395,6 +396,7 @@ export class WorldSceneEngine {
       // ?quality=full: forget a remembered "weak" verdict and start in the full profile
       try {
         localStorage.removeItem('td-weak');
+        localStorage.removeItem('td-tier');
       } catch {
         /* private mode */
       }
@@ -720,6 +722,7 @@ export class WorldSceneEngine {
     if (this.disposed) return;
     await new Promise<void>((r) => requestAnimationFrame(() => r()));
     await this.warmUp();
+    this.restoreTier(); // a machine that needed the weakest tiers last time starts there
     this.live = true; // from now on the frame loop renders
     onProgress?.(1);
   }
@@ -1166,10 +1169,13 @@ export class WorldSceneEngine {
     this.flashKind = tr.flash > 0.02 ? tr.kind : null;
 
     // Post pass + bloom: only pay for the warp pass while a transition plays.
-    const passOn = tr.flash > 0.002 || tr.warp > 0.01;
+    // On the weak tiers the blur of the approach / gate (a full-screen pass for about 7 s) is skipped: only
+    // the flash itself, which is short, uses the pass.
+    const warpOn = this.qualityTier < 3 && !this.mobile;
+    const passOn = tr.flash > 0.002 || (warpOn && tr.warp > 0.01);
     this.transPass.enabled = passOn;
     if (passOn) {
-      this.transPass.uniforms.uWarp.value = tr.warp;
+      this.transPass.uniforms.uWarp.value = warpOn ? tr.warp : 0;
       this.transPass.uniforms.uFlash.value = tr.flash;
       this.transPass.uniforms.uFlashEdge.value = tr.flashEdge;
       this.transPass.uniforms.uAspect.value = this.camera.aspect;
@@ -1276,7 +1282,7 @@ export class WorldSceneEngine {
     } else if (!heavyZone) {
       shadowNow = this.frameCounter % 2 === 0;
     } else {
-      shadowNow = moved > 0.9 || this.elapsedTime - this.lastShadowT > 0.25;
+      shadowNow = this.qualityTier >= 3 ? moved > 2.0 || this.elapsedTime - this.lastShadowT > 0.2 : moved > 0.9 || this.elapsedTime - this.lastShadowT > 0.25;
     }
     shadowNow = shadowNow && !this.cityHidden;
     if (shadowNow) {
@@ -1335,8 +1341,8 @@ export class WorldSceneEngine {
       // 1.2 s right at the web stop (a recorded hitch). ?dpr=2 still pins 2x for anyone who wants it.
       const maxDpr = Math.min(this.maxRenderDpr(), this.dprCap, this.mobile ? 99 : Math.max(window.devicePixelRatio || 1, 1.5));
       // Phones never go below 1.5 (below that the image turns to mush).
-      const floor = this.mobile ? 1.5 : 1.0;
-      const DPR_STEPS = [1.0, 1.25, 1.5, 1.75, 2.0].filter((s) => s >= floor);
+      const floor = this.mobile ? 1.5 : this.dprFloor;
+      const DPR_STEPS = [0.8, 1.0, 1.25, 1.5, 1.75, 2.0].filter((s) => s >= floor);
       const target = this.frameCap || 60; // fps we are trying to hold
       let next = this.currentDpr;
       const cur = DPR_STEPS.reduce((a, b) => (Math.abs(b - next) < Math.abs(a - next) ? b : a));
@@ -1384,22 +1390,43 @@ export class WorldSceneEngine {
 
       // Quality governor: ~4s of sustained low FPS steps the scene down a tier
       this.lowStreak = this.currentFps < target * 0.7 ? this.lowStreak + 1 : 0;
-      if (this.lowStreak >= 2 && this.qualityTier < 4) {
+      if (this.lowStreak >= 2 && this.qualityTier < 6) {
         this.lowStreak = 0;
         this.applyQualityTier(++this.qualityTier);
-      } else if (this.lowStreak >= 3 && this.qualityTier >= 4 && !this.weakSaved) {
-        // Every step taken and still slow: remember it, the next visit starts in the weak profile
-        this.weakSaved = true;
-        try {
-          localStorage.setItem('td-weak', String(Date.now()));
-        } catch {
-          /* private mode */
-        }
       }
     }
   };
 
+  // From tier 5 the machine is really struggling: remember the verdict (a week) so the next visit starts in the
+  // weak profile at that tier at once, instead of crawling through the steps again in the first seconds.
+  private rememberWeak(tier: number) {
+    if (this.weakSaved && tier <= this.savedTier) return;
+    this.weakSaved = true;
+    this.savedTier = tier;
+    try {
+      localStorage.setItem('td-weak', String(Date.now()));
+      localStorage.setItem('td-tier', String(tier));
+    } catch {
+      /* private mode */
+    }
+  }
+  private savedTier = 0;
+  private restoreTier() {
+    if (!this.weak || this.mobile) return;
+    let saved = 0;
+    try {
+      saved = Number(localStorage.getItem('td-tier')) || 0;
+    } catch {
+      /* private mode */
+    }
+    for (let t = 1; t <= Math.min(saved, 6); t++) {
+      this.qualityTier = t;
+      this.applyQualityTier(t);
+    }
+  }
+
   private applyQualityTier(tier: number) {
+    if (tier >= 5) this.rememberWeak(tier);
     if (tier === 1) {
       this.dprCap = 1.0;
       this.pendingDpr = 1.0; // applied (and clamped to the cap) at the start of the next frame
@@ -1407,12 +1434,33 @@ export class WorldSceneEngine {
       this.reflectionDisabled = true;
     } else if (tier === 3) {
       this.bloomPass.enabled = false;
-    } else if (this.smaaPass && this.fxaaPass) {
-      // last step: three SMAA passes -> one FXAA pass
-      this.smaaPass.enabled = false;
-      this.fxaaPass.enabled = true;
+    } else if (tier === 4) {
+      // three SMAA passes -> one FXAA pass
+      if (this.smaaPass && this.fxaaPass) {
+        this.smaaPass.enabled = false;
+        this.fxaaPass.enabled = true;
+      }
+    } else if (tier === 5) {
+      // Only the car casts a shadow. The shadow pass otherwise redraws every building and lamp in the
+      // frustum, and on the opening street it runs about every frame (the car moves > 0.9 m per frame
+      // at 30 fps): on a weak GPU that single pass is a third of the frame. The car keeps its shadow
+      // (and its contact shadow); the street loses the long building shadows.
+      this.scene.traverse((o) => {
+        const m = o as THREE.Mesh;
+        if (m.isMesh && m.castShadow && !m.userData.carShadow) {
+          m.castShadow = false;
+          this.droppedCasters.push(m);
+        }
+      });
+    } else if (tier === 6) {
+      // last resort: render a little below the screen's resolution (FXAA smooths it)
+      this.dprFloor = 0.8;
+      this.dprCap = 0.8;
+      this.pendingDpr = 0.8;
     }
   }
+  private droppedCasters: THREE.Mesh[] = [];
+  private dprFloor = 1.0;
 
   private emitTelemetry() {
     if (!this.onTelemetry) return;
