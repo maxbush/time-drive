@@ -1,4 +1,4 @@
-import{M as y,O as N,B,F as L,S as f,U as d,V as n,W as x,H as g,N as W,C as R,a as A,b as v,A as H,c as U,T as D,L as F,d as O,R as X,e as j,f as G,g as V,h as Y,i as I,j as q,k as K,l as Q,m as k}from"./three-CZD_14JF.js";const P={name:"CopyShader",uniforms:{tDiffuse:{value:null},opacity:{value:1}},vertexShader:`
+import{M as y,O as N,B,F as L,S as f,U as d,V as n,W as x,H as g,N as W,C as R,a as A,b as v,A as H,c as U,T as D,L as F,d as O,R as X,e as j,f as G,g as V,h as Y,i as I,j as q,k as K,l as Q,m as k}from"./three-B48bhhtG.js";const P={name:"CopyShader",uniforms:{tDiffuse:{value:null},opacity:{value:1}},vertexShader:`
 
 		varying vec2 vUv;
 
