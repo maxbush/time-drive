@@ -25,6 +25,51 @@ const SCALE = 1.5;
 // The board in the scene (not the panel's image) is read from a distance, where it covers about a third of the
 // screen: small grey captions come out 5 px tall there. In this mode they are left out and the rest is larger.
 let compact = false;
+// Weak GPUs and phones draw the board at a lower resolution and a smaller size on screen: there only the
+// big words stay (no era line, three large blocks instead of the full diagram).
+let lite = false;
+let standLite = false;
+export function setStandLite(on: boolean) {
+  standLite = on;
+}
+
+function chip(ctx: Ctx, cx: number, cy: number, w: number, h: number, lines: string[], accent: string, strong = false) {
+  ctx.save();
+  ctx.fillStyle = strong ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.035)';
+  ctx.strokeStyle = strong ? accent : 'rgba(255,255,255,0.34)';
+  ctx.lineWidth = strong ? 3 : 1.6;
+  ctx.beginPath();
+  ctx.roundRect(cx - w / 2, cy - h / 2, w, h, 10);
+  ctx.fill();
+  ctx.stroke();
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#f8fafc';
+  tracking(ctx, 0);
+  const size = lines.length > 2 ? 34 : lines.length > 1 ? 38 : strong ? 44 : 38;
+  const step = size * 1.17;
+  lines.forEach((t, i) => {
+    const y = cy + (i - (lines.length - 1) / 2) * step;
+    fitText(ctx, t, cx, y, w - 20, (p) => `500 ${p}px ${SANS}`, size);
+  });
+  ctx.restore();
+}
+
+function drawLite(ctx: Ctx, diagram: StandDiagram | undefined, accent: string, soft: string) {
+  const y = 410;
+  if (diagram === 'albion') {
+    chip(ctx, 170, y, 240, 100, ['MeritHub'], accent);
+    chip(ctx, 512, y, 270, 130, ['ALBION'], accent, true);
+    chip(ctx, 840, y, 250, 120, ['Telegram', 'WhatsApp'], accent);
+  } else {
+    chip(ctx, 160, y, 220, 100, ['gias.by'], accent);
+    chip(ctx, 490, y, 290, 130, ['Аналитика'], accent, true);
+    chip(ctx, 825, y, 290, 150, ['Веб-интерфейс', 'Telegram', 'Excel-отчёты'], accent);
+  }
+  const xs = diagram === 'albion' ? [290, 377, 647, 715] : [270, 345, 635, 680];
+  arrow(ctx, xs[0] + 6, y, xs[1] - 6, y, soft);
+  arrow(ctx, xs[2] + 6, y, xs[3] - 6, y, soft);
+}
 
 type Ctx = CanvasRenderingContext2D;
 
@@ -193,10 +238,12 @@ function drawMetrics(ctx: Ctx, metrics: string[], accent: string) {
     ctx.fillStyle = i === 0 ? accent : '#e2e8f0';
     tracking(ctx, 0.5);
     if (compact) {
-      fitText(ctx, value || '', x, 405, colW, (p) => `500 ${p}px ${MONO}`, 32);
-      ctx.fillStyle = '#9aa7bb';
-      tracking(ctx, 0);
-      fitText(ctx, label || '', x, 440, colW, (p) => `400 ${p}px ${SANS}`, 22);
+      fitText(ctx, value || '', x, lite ? 420 : 405, colW, (p) => `500 ${p}px ${MONO}`, lite ? 40 : 32);
+      if (!lite) {
+        ctx.fillStyle = '#9aa7bb';
+        tracking(ctx, 0);
+        fitText(ctx, label || '', x, 440, colW, (p) => `400 ${p}px ${SANS}`, 22);
+      }
     } else {
       ctx.font = `400 24px ${MONO}`;
       ctx.fillText(value || '', x, 400);
@@ -248,6 +295,7 @@ export function createStandTexture(
   compactBoard = true
 ): THREE.CanvasTexture {
   compact = compactBoard;
+  lite = compactBoard && standLite;
   const canvas = document.createElement('canvas');
   canvas.width = DW * scale;
   canvas.height = DH * scale;
@@ -302,34 +350,37 @@ export function createStandTexture(
   }
 
   // era label: "ПРОЕКТ 02 // АВТОМАТИЗАЦИЯ" -> index, hairline, category
-  const [head, tail] = opts.era.split('//').map((s) => s.trim());
-  const idx = (head.match(/\d+/) ?? ['01'])[0];
-  ctx.textAlign = 'left';
-  ctx.fillStyle = opts.accentHex;
-  ctx.font = `500 20px ${MONO}`;
-  tracking(ctx, 2);
-  ctx.fillText(idx, 62, 86);
-  line(ctx, 100, 80, 150, 80, 'rgba(255,255,255,0.3)', 1);
-  ctx.fillStyle = '#8b98ad';
-  ctx.font = `400 ${compact ? 19 : 15}px ${MONO}`;
-  tracking(ctx, compact ? 3 : 3.5);
-  ctx.fillText((tail ?? head).toUpperCase(), 164, 85);
+  if (!lite) {
+    const [head, tail] = opts.era.split('//').map((s) => s.trim());
+    const idx = (head.match(/\d+/) ?? ['01'])[0];
+    ctx.textAlign = 'left';
+    ctx.fillStyle = opts.accentHex;
+    ctx.font = `500 20px ${MONO}`;
+    tracking(ctx, 2);
+    ctx.fillText(idx, 62, 86);
+    line(ctx, 100, 80, 150, 80, 'rgba(255,255,255,0.3)', 1);
+    ctx.fillStyle = '#8b98ad';
+    ctx.font = `400 ${compact ? 19 : 15}px ${MONO}`;
+    tracking(ctx, compact ? 3 : 3.5);
+    ctx.fillText((tail ?? head).toUpperCase(), 164, 85);
+  }
 
   // title + subtitle
   ctx.fillStyle = '#f8fafc';
   tracking(ctx, -1);
-  fitText(ctx, opts.title, 60, 188, DW - 120, (p) => `200 ${p}px ${SANS}`, 82);
+  fitText(ctx, opts.title, 60, lite ? 168 : 188, DW - 120, (p) => `200 ${p}px ${SANS}`, 82);
   ctx.fillStyle = '#9aa7bb';
   tracking(ctx, 0);
   if (compact) {
-    fitText(ctx, opts.subtitle, 62, 244, DW - 124, (p) => `300 ${p}px ${SANS}`, 31);
+    fitText(ctx, opts.subtitle, 62, lite ? 238 : 244, DW - 124, (p) => `${lite ? 400 : 300} ${p}px ${SANS}`, lite ? 38 : 31);
   } else {
     ctx.font = `300 25px ${SANS}`;
     ctx.fillText(opts.subtitle, 62, 240);
   }
 
   const soft = hexA(opts.accentHex, 0.75);
-  if (opts.diagram === 'albion') drawAlbion(ctx, opts.accentHex, soft);
+  if (lite && opts.diagram) drawLite(ctx, opts.diagram, opts.accentHex, soft);
+  else if (opts.diagram === 'albion') drawAlbion(ctx, opts.accentHex, soft);
   else if (opts.diagram === 'tenders') drawTenders(ctx, opts.accentHex, soft);
   else drawMetrics(ctx, opts.metrics, opts.accentHex);
 
