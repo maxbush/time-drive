@@ -3,7 +3,7 @@ import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { MaterialPalette } from './materials';
 import { mergeIntoChunks } from './chunkedMerge';
 import { createPastRoadSignTexture, createSignageTexture } from './textures';
-import { createStandTexture, StandDiagram } from './standTexture';
+import { createStandTexture, StandDiagram, StandOptions } from './standTexture';
 
 // The boards of the stops are read from a distance: sample a sharper mip level than the default (the
 // board is flat and faces the camera, so the extra sharpness costs nothing visible in shimmer).
@@ -86,6 +86,8 @@ export class ArchitectureBuilder {
   private windowQuads: WindowQuadSpec[] = [];
   public extraGroup = new THREE.Group();
   public lightAnchors: LightAnchor[] = [];
+  /** the project boards (not the live site screens): where they stand and what they show */
+  public showcases: Array<{ center: THREE.Vector3; rotY: number; width: number; height: number; opts: StandOptions }> = [];
   private anisotropy: number;
 
   constructor(anisotropy: number) {
@@ -344,6 +346,7 @@ export class ArchitectureBuilder {
     // drawn title card.
     customMap?: THREE.Texture
   ) {
+    if (!customMap) this.showcases.push({ center: new THREE.Vector3(cx, cy, cz), rotY, width, height, opts });
     const tex = customMap ?? createStandTexture(opts, this.anisotropy);
     // A website screenshot is mostly white: lit + emissive PBR pushed it far past 1.0
     // (washed out, blooming). Show it unlit, slightly dimmed, so it reads like a

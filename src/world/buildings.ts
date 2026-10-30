@@ -1216,7 +1216,12 @@ export async function buildWorldArchitecture(
   maxAnisotropy: number,
   pause: () => Promise<void> = async () => {},
   lite = false
-): Promise<{ group: THREE.Group; lightAnchors: LightAnchor[]; treePlacements: TreePlacement[] }> {
+): Promise<{
+  group: THREE.Group;
+  lightAnchors: LightAnchor[];
+  treePlacements: TreePlacement[];
+  showcases: ArchitectureBuilder['showcases'];
+}> {
   LITE = lite;
   const builder = new ArchitectureBuilder(maxAnisotropy);
   const treePlacements: TreePlacement[] = [];
@@ -1614,6 +1619,7 @@ export async function buildWorldArchitecture(
   return {
     group: builder.buildGroup(palette),
     lightAnchors: builder.lightAnchors,
+    showcases: builder.showcases,
     treePlacements,
   };
 }

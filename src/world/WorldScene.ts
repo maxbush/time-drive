@@ -12,6 +12,7 @@ import { createFireTrails, FireTrails } from './fireTrails';
 import { CHAPTERS } from '../content';
 import { createTextureLibrary } from './textures';
 import { setStandLite, setStandScale } from './standTexture';
+import { BoardOverlay } from './boardOverlay';
 import { createMaterialPalette } from './materials';
 import { createEnvironment, EnvironmentSystem } from './environment';
 import { buildGrandAvenue, AvenueSystem } from './avenue';
@@ -542,7 +543,8 @@ export class WorldSceneEngine {
     {
       const q = parseFloat(new URLSearchParams(window.location.search).get('bs') ?? '');
       setStandScale(Number.isFinite(q) ? q : this.weak || this.mobile ? 1.5 : 2);
-      setStandLite(this.weak || this.mobile || new URLSearchParams(window.location.search).get('lite') === '1');
+      const liteQ = new URLSearchParams(window.location.search).get('lite');
+      setStandLite(liteQ === '1' || (liteQ !== '0' && (this.weak || this.mobile)));
     }
     const texLib = await createTextureLibrary(this.renderer, this.weak ? 8 : 16, () => WorldSceneEngine.breathe(), this.weak || this.mobile);
     if (this.disposed) return;
@@ -591,6 +593,7 @@ export class WorldSceneEngine {
     if (this.disposed) return;
     this.archGroup = archResult.group;
     this.scene.add(this.archGroup);
+    this.setupBoardOverlay(archResult.showcases);
     await step(0.75);
     if (this.disposed) return;
 
@@ -1365,6 +1368,13 @@ export class WorldSceneEngine {
     this.vehicle.setShadowProxyVisible(shadowNow);
     if ((this.weak || this.mobile) && (this.frameCounter & 7) === 0) this.updateDistanceCull();
     this.composer.render();
+    if (this.boardOverlay) {
+      // (see boardOverlay.ts) lay the stop's board over the scene at the screen's real resolution while the car stands there
+      const native = window.devicePixelRatio || 1;
+      const on = this.boardMode === 'on' || (this.boardMode === 'auto' && this.currentDpr < native - 0.05);
+      const stopped = Math.abs(this.vehicle.speed) < 1.5;
+      this.boardOverlay.update(this.camera, this.viewW, this.viewH, stopped ? this.activeStation : null, on, this.vehicle.position);
+    }
 
     this.frameCounter++;
     this.fpsFrames++;
@@ -1557,6 +1567,26 @@ export class WorldSceneEngine {
     }
   }
   private bloomQuarter = new URLSearchParams(window.location.search).get('bloomq') !== '0';
+  private boardOverlay?: BoardOverlay;
+  private boardMode: 'auto' | 'on' | 'off' = 'auto'; // ?board=1 / ?board=0
+  private setupBoardOverlay(showcases: Array<{ center: THREE.Vector3; rotY: number; width: number; height: number; opts: import('./standTexture').StandOptions }>) {
+    const q = new URLSearchParams(window.location.search).get('board');
+    this.boardMode = q === '1' ? 'on' : q === '0' ? 'off' : 'auto';
+    if (this.boardMode === 'off' || showcases.length < 3) return;
+    // west to east along the avenue: Web (z -95), Albion (-222), Tenders (-345)
+    const ids = ['web', 'albion', 'tenders'];
+    const boards = [...showcases]
+      .sort((a, b) => b.center.z - a.center.z)
+      .slice(0, 3)
+      .map((s, i) => ({ id: ids[i], center: s.center, rotY: s.rotY, width: s.width, height: s.height, opts: s.opts }));
+    this.boardOverlay = new BoardOverlay(this.container, boards, this.weak || this.mobile ? 1.5 : 2);
+    // drawn one by one while the drive begins (each is one canvas drawing), well before the car gets there
+    boards.forEach((b, i) =>
+      window.setTimeout(() => {
+        if (!this.disposed) void this.boardOverlay?.prepare(b.id);
+      }, 4000 + i * 4500)
+    );
+  }
   private droppedCasters: THREE.Mesh[] = [];
   private dprFloor = 1.0;
 
@@ -1912,6 +1942,7 @@ export class WorldSceneEngine {
     window.removeEventListener('pointermove', this.handlePointerMove);
     window.removeEventListener('pointerup', this.handlePointerUp);
     window.removeEventListener('pointercancel', this.handlePointerUp);
+    this.boardOverlay?.dispose();
     this.compileRT?.dispose();
     this.reflectRT?.dispose(); // (undefined if disposed while still being built)
     this.composer?.dispose();

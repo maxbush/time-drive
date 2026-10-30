@@ -258,8 +258,8 @@ function drawMetrics(ctx: Ctx, metrics: string[], accent: string) {
 
 // The finished board as an image (for the HTML panel): drawn on demand at a higher scale.
 // Same, but the (slow) image encoding runs off the main thread: resolves to an object URL.
-export function renderStandImageAsync(opts: StandOptions, scale = 2.4): Promise<string> {
-  const tex = createStandTexture(opts, 1, scale, false);
+export function renderStandImageAsync(opts: StandOptions, scale = 2.4, compactBoard = false): Promise<string> {
+  const tex = createStandTexture(opts, 1, scale, compactBoard);
   const canvas = tex.image as HTMLCanvasElement;
   return new Promise((resolve, reject) => {
     canvas.toBlob(
