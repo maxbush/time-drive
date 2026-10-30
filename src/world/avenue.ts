@@ -307,6 +307,18 @@ export function buildGrandAvenue(palette: MaterialPalette): AvenueSystem {
       const lx = side * 12.0;
       const armDir = -side;
 
+      // The west lamp at z=-216 stands right in front of the ALBION board (z=-222) and cut its title in two:
+      // no pole there (the light stays, so the car at that stop is lit as before).
+      if (side === -1 && Math.abs(z + 216) < 1) {
+        lightAnchors.push({
+          position: new THREE.Vector3(lx + armDir * 1.95, swH + 6.52, z),
+          color: 0xffd699,
+          intensity: 11.0,
+          distance: 28.0,
+        });
+        continue;
+      }
+
       m4.makeTranslation(lx, swH + 0.55, z);
       steelGeos.push(makeTransformedGeo(basePlinthGeo, m4));
 
